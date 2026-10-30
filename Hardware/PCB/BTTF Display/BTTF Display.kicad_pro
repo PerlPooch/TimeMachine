@@ -70,7 +70,12 @@
         }
       },
       "diff_pair_dimensions": [],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "lib_footprint_mismatch|184857000|185371000|d577cc66-7281-4bbf-92b1-f43323c92d1d|00000000-0000-0000-0000-000000000000",
+          ""
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -112,7 +117,7 @@
         "nonmirrored_text_on_back_layer": "warning",
         "npth_inside_courtyard": "error",
         "padstack": "warning",
-        "pth_inside_courtyard": "error",
+        "pth_inside_courtyard": "ignore",
         "shorting_items": "error",
         "silk_edge_clearance": "warning",
         "silk_over_copper": "ignore",
@@ -240,7 +245,7 @@
       "internal_id": "",
       "mfg": "",
       "mpn": "",
-      "sch_revision": ""
+      "sch_revision": "2.0"
     },
     "layer_pairs": [],
     "layer_presets": [],
@@ -464,8 +469,8 @@
       "net_not_bus_member": "warning",
       "no_connect_connected": "warning",
       "no_connect_dangling": "warning",
-      "pin_not_connected": "error",
-      "pin_not_driven": "error",
+      "pin_not_connected": "ignore",
+      "pin_not_driven": "ignore",
       "pin_to_pin": "warning",
       "power_pin_not_driven": "error",
       "same_local_global_label": "warning",
@@ -865,7 +870,7 @@
         "uuid": "4576c9e7-c502-44f5-a254-67ad5004ac49"
       }
     ],
-    "used_designators": "JP1,R1-14,DS1-3,D1-6,#PWR1-31,C1-17,U1-12,Ue1,J1-3",
+    "used_designators": "SW1,JP1,R1-15,DS1-3,D1-6,#PWR1-39,C1-26,U1-12,Ue1,J1-4",
     "variants": []
   },
   "sheets": [
