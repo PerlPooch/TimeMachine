@@ -12,6 +12,26 @@ constexpr size_t ReservedChecksumBytes = 2;
 constexpr size_t MaxPayloadBytes = MaxFrameBytes - 1 - ReservedChecksumBytes - 1;
 constexpr size_t BufferBytes = MaxFrameBytes + 1; // Optional local NUL, never transmitted.
 
+// Report framing receipt independently of payload validation or command execution.
+enum class Status : uint8_t {
+	Ok,
+	ErrorLength,
+	ErrorTerminator,
+	ErrorTimeout
+};
+constexpr size_t StatusBufferBytes = sizeof("{\"status\":\"error-terminator\"}") + 2;
+
+// Keep protocol status spelling in one place for framing and diagnostic output.
+inline const char* statusName(Status status) {
+	switch (status) {
+		case Status::Ok: return "ok";
+		case Status::ErrorLength: return "error-length";
+		case Status::ErrorTerminator: return "error-terminator";
+		case Status::ErrorTimeout: return "error-timeout";
+	}
+	return nullptr;
+}
+
 // Return wire length; reject oversized data or insufficient destination space.
 inline size_t encode(const char* payload, size_t length, uint8_t* output, size_t capacity) {
 	if (!payload || !output || length > MaxPayloadBytes || capacity < length + 3) {
@@ -22,6 +42,17 @@ inline size_t encode(const char* payload, size_t length, uint8_t* output, size_t
 	output[length + 1] = '\n';
 	output[length + 2] = 0;
 	return length + 2;
+}
+
+// Frame a protocol acknowledgment without implying that its payload action succeeded.
+inline size_t encodeStatus(Status status, uint8_t* output, size_t capacity) {
+	const char* name = statusName(status);
+	if (!name) return 0;
+
+	char payload[StatusBufferBytes];
+	const int length = snprintf(payload, sizeof(payload), "{\"status\":\"%s\"}", name);
+
+	return length > 0 ? encode(payload, static_cast<size_t>(length), output, capacity) : 0;
 }
 
 // Timestamped ping remains human-readable on the USB diagnostics console.
@@ -109,8 +140,10 @@ public:
 	// Abandon incomplete reception after an idle timeout, even when no new byte arrives.
 	Result expire(uint32_t now) {
 		if (state_ != State::Length && uint32_t(now - lastByteAt_) >= TimeoutMs) {
+			// A discarded frame already produced its length or terminator error.
+			const bool discarded = state_ == State::Discard;
 			reset();
-			return Result::Timeout;
+			return discarded ? Result::None : Result::Timeout;
 		}
 		return Result::None;
 	}

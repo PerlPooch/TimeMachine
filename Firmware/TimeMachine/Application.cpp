@@ -247,11 +247,50 @@ void Application::serviceHttp() {
 }
 
 // Dispatch sensitive frames before logging other length-delimited payloads.
-void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, const char* name) {
+void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, size_t index, const char* name) {
 	using Result = SerialProtocol::Receiver::Result;
+	using Status = SerialProtocol::Status;
+	auto& response = serialResponse_[index];
+
+	// Retain one response per port and leave further input in the UART until it drains.
+	if (response.pending) return;
+
 	auto report = [&](Result result) {
 		if (result == Result::None) {
 			return;
+		}
+
+		size_t first = 0;
+		while (result == Result::Message && first < receiver.length()
+			&& (receiver.payload()[first] == ' ' || receiver.payload()[first] == '\t'
+				|| receiver.payload()[first] == '\r' || receiver.payload()[first] == '\n')) {
+			++first;
+		}
+
+		if (result == Result::Message && first < receiver.length() && receiver.payload()[first] == '{') {
+			JsonDocument payload;
+
+			// Reserve status objects as responses, including unknown future status values.
+			// Recognizing JSON rather than literal bytes also accepts normal JSON whitespace.
+			if (!deserializeJson(payload, receiver.payload(), receiver.length())
+				&& payload.is<JsonObject>() && payload["status"].is<const char*>()) {
+				Serial.print("Serial ");
+				Serial.print(name);
+				Serial.print(" status: ");
+				Serial.println(payload["status"].as<const char*>());
+				return;
+			}
+		}
+
+		// Receipt acknowledgment is determined by framing, before application validation.
+		response.pending = true;
+		response.sent = 0;
+		switch (result) {
+			case Result::Message: response.status = Status::Ok; break;
+			case Result::InvalidLength: response.status = Status::ErrorLength; break;
+			case Result::InvalidTerminator: response.status = Status::ErrorTerminator; break;
+			case Result::Timeout: response.status = Status::ErrorTimeout; break;
+			case Result::None: break;
 		}
 
 		if (result == Result::Message && SerialProtocol::isWiFiCredentials(receiver.payload(), receiver.length())) {
@@ -285,9 +324,11 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 				result == Result::InvalidTerminator ? "expected newline terminator" : "frame timeout");
 		}
 	};
+
 	report(receiver.expire(millis()));
+
 	// Bound work per port so continuous traffic cannot monopolize the main loop.
-	for (size_t count = 0; count < SerialProtocol::MaxFrameBytes && port.available(); ++count) {
+	for (size_t count = 0; count < SerialProtocol::MaxFrameBytes && port.available() && !response.pending; ++count) {
 		const int byte = port.read();
 		if (byte < 0) {
 			break;
@@ -375,8 +416,8 @@ bool Application::routeDisplayCommand(const Display::DisplayCommand& command) {
 // Both ports receive regardless of role. Primary boards transmit independently.
 void Application::serviceSerial() {
 	if (config_.get("primary").as<bool>()) display_.resetMillisDelta();
-	receiveSerial(serialA_, receiverA_, "A");
-	receiveSerial(serialB_, receiverB_, "B");
+	receiveSerial(serialA_, receiverA_, 0, "A");
+	receiveSerial(serialB_, receiverB_, 1, "B");
 
 	const bool primary = config_.get("primary").as<bool>();
 	const uint32_t now = millis();
@@ -397,6 +438,25 @@ void Application::serviceSerial() {
 		if (!primary && pending.credentials && !pending.sent) {
 			pending = SerialTransmit{};
 		}
+
+		auto& response = serialResponse_[index];
+
+		// Respond before starting another frame, but never interrupt bytes already sent.
+		if (response.pending && !pending.sent) {
+			frameSent[index] = true;
+			uint8_t frame[SerialProtocol::StatusBufferBytes];
+			const size_t length = SerialProtocol::encodeStatus(response.status, frame, sizeof(frame));
+			const int room = ports[index]->availableForWrite();
+			if (room <= 0) continue;
+
+			const size_t remaining = length - response.sent;
+			const size_t count = remaining < static_cast<size_t>(room) ? remaining : static_cast<size_t>(room);
+			response.sent += ports[index]->write(frame + response.sent, count);
+
+			if (response.sent == length) response = SerialResponse{};
+			continue;
+		}
+
 		if (!pending.length) continue;
 		frameSent[index] = true;
 		const int room = ports[index]->availableForWrite();

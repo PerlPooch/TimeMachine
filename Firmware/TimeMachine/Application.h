@@ -61,7 +61,7 @@ private:
 	void queueWiFiCredentials(uint32_t now);
 	void receiveWiFiCredentials(const uint8_t* payload, size_t length, const char* portName);
 	bool routeDisplayCommand(const Display::DisplayCommand& command);
-	void receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, const char* name);
+	void receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, size_t index, const char* name);
 	void serviceButton();
 	void showReset();
 	void factoryReset();
@@ -88,6 +88,12 @@ private:
 		bool credentials = false;
 	};
 	SerialTransmit serialTransmit_[2];
+	struct SerialResponse {
+		SerialProtocol::Status status = SerialProtocol::Status::Ok;
+		size_t sent = 0;
+		bool pending = false;
+	};
+	SerialResponse serialResponse_[2];
 	SerialProtocol::Receiver receiverA_;
 	SerialProtocol::Receiver receiverB_;
 	static constexpr uint32_t PingIntervalMs = 1000;
