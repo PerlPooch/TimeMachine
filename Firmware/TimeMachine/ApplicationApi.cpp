@@ -193,7 +193,7 @@ void ApplicationApi::configRequest() {
 void ApplicationApi::displayRequest() {
 	Display::DisplayCommand command;
 
-	bool hasText = false;
+	bool hasAction = false;
 	bool hasSpeed = false;
 	bool hasDirection = false;
 	bool hasDestination = false;
@@ -215,12 +215,25 @@ void ApplicationApi::displayRequest() {
 			else if (value == "a") command.destinations |= Display::PortA;
 			else if (value == "b") command.destinations |= Display::PortB;
 			else { sendError(400, "Destination must be local, a, or b"); return; }
-		} else if (key == "message" || key == "scroll" || key == "slide" || key == "appear") {
-			if (hasText) {
-				sendError(400, "Provide exactly one message, scroll, appear, or slide");
+		} else if (key == "message" || key == "scroll" || key == "slide" || key == "appear" || key == "fade") {
+			if (hasAction) {
+				sendError(400, "Provide exactly one message, scroll, appear, slide, or fade");
 				return;
 			}
-			hasText = true;
+			hasAction = true;
+
+			if (key == "fade") {
+				uint32_t level;
+				if (!parseUnsigned(value, level) || level > 255) {
+					sendError(400, "Fade level must be an integer from 0 to 255");
+					return;
+				}
+
+				command.kind = Display::DisplayCommand::Kind::Fade;
+				command.level = static_cast<uint8_t>(level);
+				continue;
+			}
+
 			command.kind = key == "scroll" ? Display::DisplayCommand::Kind::Scroll
 				: key == "slide" ? Display::DisplayCommand::Kind::Slide
 				: key == "appear" ? Display::DisplayCommand::Kind::Appear
@@ -256,8 +269,8 @@ void ApplicationApi::displayRequest() {
 			hasColons = true;
 			command.colonsBlink = true;
 		} else if (key == "speed") {
-			if (hasSpeed || !parseUnsigned(value, command.speed) || command.speed < 1 || command.speed > 60000) {
-				sendError(400, "Speed must be one integer from 1 to 60000 ms");
+			if (hasSpeed || !parseUnsigned(value, command.speed) || command.speed > 60000) {
+				sendError(400, "Speed must be one integer from 0 to 60000 ms");
 				return;
 			}
 			hasSpeed = true;
@@ -280,8 +293,20 @@ void ApplicationApi::displayRequest() {
 		return;
 	}
 
-	if (!hasText || (command.kind == Display::DisplayCommand::Kind::Message && (hasSpeed || hasDirection))) {
-		sendError(400, "message | slide [speed] [direction] | scroll [speed] [direction] | appear [speed] [direction]; all accept [am] [pm] [colontop] [colonbottom] or [colons=blink], and [to]");
+	if (!hasAction || (command.kind == Display::DisplayCommand::Kind::Message && (hasSpeed || hasDirection))) {
+		sendError(400, "message | slide [speed] [direction] | scroll [speed] [direction] | appear [speed] [direction] | fade=0..255 [speed]; all accept [to]; text actions also accept indicators");
+		return;
+	}
+
+	if (command.kind == Display::DisplayCommand::Kind::Fade) {
+		if (hasDirection || indicatorKeys || hasColons) {
+			sendError(400, "Fade accepts only level, speed, and destinations");
+			return;
+		}
+
+		if (!hasSpeed) command.speed = 350;
+	} else if (!command.speed) {
+		sendError(400, "Text animation speed must be from 1 to 60000 ms");
 		return;
 	}
 
@@ -349,20 +374,27 @@ size_t ApplicationApi::encodeDisplayCommand(const Display::DisplayCommand& comma
 	JsonDocument document;
 	auto fields = document.to<JsonArray>();
 	fields.add("display2");
-	fields.add(command.kind == Display::DisplayCommand::Kind::Scroll ? "scroll" :
-		command.kind == Display::DisplayCommand::Kind::Slide ? "slide" :
-		command.kind == Display::DisplayCommand::Kind::Appear ? "appear" : "message");
-	fields.add(command.text);
-	fields.add(command.speed);
-	fields.add(command.direction == Display::Direction::Right ? "right" : "left");
-	// Indicator bits: AM, PM, top colon, bottom colon, blinking colons.
-	const uint8_t indicators = (command.am ? 1 : 0) | (command.pm ? 2 : 0)
-		| (command.colonTop ? 4 : 0) | (command.colonBottom ? 8 : 0)
-		| (command.colonsBlink ? 16 : 0);
+	if (command.kind == Display::DisplayCommand::Kind::Fade) {
+		if (command.speed > 60000) return 0;
+		fields.add("fade");
+		fields.add(command.level);
+		fields.add(command.speed);
+	} else {
+		fields.add(command.kind == Display::DisplayCommand::Kind::Scroll ? "scroll" :
+			command.kind == Display::DisplayCommand::Kind::Slide ? "slide" :
+			command.kind == Display::DisplayCommand::Kind::Appear ? "appear" : "message");
+		fields.add(command.text);
+		fields.add(command.speed);
+		fields.add(command.direction == Display::Direction::Right ? "right" : "left");
+		// Indicator bits: AM, PM, top colon, bottom colon, blinking colons.
+		const uint8_t indicators = (command.am ? 1 : 0) | (command.pm ? 2 : 0)
+			| (command.colonTop ? 4 : 0) | (command.colonBottom ? 8 : 0)
+			| (command.colonsBlink ? 16 : 0);
 
-	if (command.colonsBlink && (command.colonTop || command.colonBottom)) return 0;
+		if (command.colonsBlink && (command.colonTop || command.colonBottom)) return 0;
 
-	fields.add(indicators);
+		fields.add(indicators);
+	}
 
 	const size_t length = measureJson(document);
 	if (document.overflowed() || length > SerialProtocol::MaxPayloadBytes || capacity <= length) return 0;
@@ -373,15 +405,30 @@ size_t ApplicationApi::encodeDisplayCommand(const Display::DisplayCommand& comma
 bool ApplicationApi::receiveDisplayCommand(const uint8_t* payload, size_t length) {
 	JsonDocument document;
 	if (length > SerialProtocol::MaxPayloadBytes || deserializeJson(document, payload, length)
-		|| !document.is<JsonArray>() || (document.size() != 5 && document.size() != 6)) return false;
+		|| !document.is<JsonArray>()) return false;
 	auto fields = document.as<JsonArrayConst>();
 
-	if (!fields[0].is<const char*>() || !fields[1].is<const char*>()
-		|| !fields[2].is<const char*>() || !fields[3].is<uint32_t>()
-		|| !fields[4].is<const char*>()) return false;
+	if (!fields[0].is<const char*>() || !fields[1].is<const char*>()) return false;
 
 	Display::DisplayCommand command;
 	const String version = fields[0].as<const char*>();
+	const String kind = fields[1].as<const char*>();
+
+	// Fade has no text, direction, or indicator fields; it preserves existing content.
+	if (kind == "fade") {
+		if (version != "display2" || fields.size() != 4
+			|| !fields[2].is<uint8_t>() || !fields[3].is<uint32_t>()) return false;
+
+		command.kind = Display::DisplayCommand::Kind::Fade;
+		command.level = fields[2].as<uint8_t>();
+		command.speed = fields[3].as<uint32_t>();
+		if (command.speed > 60000) return false;
+		return commands_.post(std::move(command));
+	}
+
+	if ((fields.size() != 5 && fields.size() != 6)
+		|| !fields[2].is<const char*>() || !fields[3].is<uint32_t>()
+		|| !fields[4].is<const char*>()) return false;
 
 	if (version == "display2") {
 		if (fields.size() != 6 || !fields[5].is<uint8_t>()) return false;
@@ -404,7 +451,6 @@ bool ApplicationApi::receiveDisplayCommand(const uint8_t* payload, size_t length
 		return false;
 	}
 
-	const String kind = fields[1].as<const char*>();
 	if (kind == "message") command.kind = Display::DisplayCommand::Kind::Message;
 	else if (kind == "scroll") command.kind = Display::DisplayCommand::Kind::Scroll;
 	else if (kind == "slide") command.kind = Display::DisplayCommand::Kind::Slide;

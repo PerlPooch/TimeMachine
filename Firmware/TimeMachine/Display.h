@@ -17,11 +17,12 @@ public:
 	enum Destination : uint8_t { Local = 1, PortA = 2, PortB = 4 };
 
 	struct DisplayCommand {
-		enum class Kind { Message, Scroll, Slide, Appear, Clock };
+		enum class Kind { Message, Scroll, Slide, Appear, Clock, Fade };
 		Kind kind = Kind::Message;
 		String text;
 		uint8_t destinations = Local;
 		uint32_t speed = 150;
+		uint8_t level = 255; // Fade target; speed is total duration in milliseconds.
 		Direction direction = Direction::Left;
 		ClockCalendar::DateTime dateTime;
 		bool timeValid = false;

@@ -144,6 +144,7 @@ bool Display::flush() {
 	return !changed || matrix_.writeBrightness(0, output_.channels, sizeof(output_.channels));
 }
 
+// Change global intensity while retaining content, motion, and indicator choices.
 bool Display::fadeTo(uint8_t level, uint32_t durationMs) {
 	if (!matrix_.ready() || (segmentTesting_ && !cancelLampTest())) {
 		return false;
@@ -199,6 +200,11 @@ void Display::drawIndicators(Frame& frame, const DisplayCommand& command) const 
 
 // Only Display interprets local display commands and writes their frames.
 bool Display::execute(const DisplayCommand& command) {
+	// Intensity changes leave the content renderer and its indicator state running.
+	if (command.kind == DisplayCommand::Kind::Fade) {
+		return fadeTo(command.level, command.speed);
+	}
+
 	if (command.kind == DisplayCommand::Kind::Clock) {
 		clockEnabled_ = true;
 		clockTime_ = command.dateTime;
@@ -233,6 +239,7 @@ bool Display::execute(const DisplayCommand& command) {
 			shown = show(Frame{}) && appearText(command.text.c_str(), command.speed, command.direction);
 			break;
 
+		case DisplayCommand::Kind::Fade:
 		case DisplayCommand::Kind::Clock:
 			break;
 	}
