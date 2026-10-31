@@ -56,6 +56,8 @@ private:
 	bool beginMode();
 	void serviceHttp();
 	void serviceSerial();
+	void queueWiFiCredentials(uint32_t now);
+	void receiveWiFiCredentials(const uint8_t* payload, size_t length, const char* portName);
 	bool routeDisplayCommand(const Display::DisplayCommand& command);
 	void receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, const char* name);
 	void serviceButton();
@@ -81,12 +83,15 @@ private:
 		uint8_t frame[SerialProtocol::BufferBytes] = {};
 		size_t length = 0;
 		size_t sent = 0;
+		bool credentials = false;
 	};
 	SerialTransmit serialTransmit_[2];
 	SerialProtocol::Receiver receiverA_;
 	SerialProtocol::Receiver receiverB_;
 	static constexpr uint32_t PingIntervalMs = 1000;
 	uint32_t lastPingAt_[2] = {};
+	static constexpr uint32_t WiFiBroadcastIntervalMs = 10000;
+	uint32_t lastWiFiAt_[2] = {};
 	bool primaryActive_ = false;
 
 	Display display_;

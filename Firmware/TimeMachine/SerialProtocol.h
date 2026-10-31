@@ -46,6 +46,57 @@ inline bool decodePing(const uint8_t* payload, size_t length, uint32_t& timestam
 	return true;
 }
 
+// Fixed-size local strings; lengths on the wire exclude their terminating NULs.
+struct WiFiCredentials {
+	char ssid[33] = {};
+	char password[65] = {};
+};
+
+constexpr size_t WiFiHeaderBytes = 7; // "wifi1", SSID length, password length.
+constexpr size_t WiFiBufferBytes = WiFiHeaderBytes + 32 + 64 + 3;
+
+// Reserve the wifi prefix for sensitive messages, including malformed versions.
+inline bool isWiFiCredentials(const uint8_t* payload, size_t length) {
+	return payload && length >= 4 && memcmp(payload, "wifi", 4) == 0;
+}
+
+// Encode credentials without JSON escaping, preserving the full SSID/password limits.
+inline size_t encodeWiFiCredentials(const WiFiCredentials& credentials, uint8_t* output, size_t capacity) {
+	const size_t ssidLength = strnlen(credentials.ssid, sizeof(credentials.ssid));
+	const size_t passwordLength = strnlen(credentials.password, sizeof(credentials.password));
+	if (!ssidLength || ssidLength > 32 || passwordLength > 64) {
+		return 0;
+	}
+
+	char payload[WiFiHeaderBytes + 32 + 64];
+	memcpy(payload, "wifi1", 5);
+	payload[5] = static_cast<char>(ssidLength);
+	payload[6] = static_cast<char>(passwordLength);
+	memcpy(payload + WiFiHeaderBytes, credentials.ssid, ssidLength);
+	memcpy(payload + WiFiHeaderBytes + ssidLength, credentials.password, passwordLength);
+	return encode(payload, WiFiHeaderBytes + ssidLength + passwordLength, output, capacity);
+}
+
+// Reject malformed lengths and embedded NULs before exposing strings to MDS_WiFi.
+inline bool decodeWiFiCredentials(const uint8_t* payload, size_t length, WiFiCredentials& credentials) {
+	if (!payload || length < WiFiHeaderBytes || memcmp(payload, "wifi1", 5) != 0) {
+		return false;
+	}
+
+	const size_t ssidLength = payload[5];
+	const size_t passwordLength = payload[6];
+	if (!ssidLength || ssidLength > 32 || passwordLength > 64
+		|| length != WiFiHeaderBytes + ssidLength + passwordLength
+		|| memchr(payload + WiFiHeaderBytes, 0, ssidLength + passwordLength)) {
+		return false;
+	}
+
+	credentials = WiFiCredentials{};
+	memcpy(credentials.ssid, payload + WiFiHeaderBytes, ssidLength);
+	memcpy(credentials.password, payload + WiFiHeaderBytes + ssidLength, passwordLength);
+	return true;
+}
+
 // Separate instances keep fragmented/interleaved traffic on A and B independent.
 class Receiver {
 public:

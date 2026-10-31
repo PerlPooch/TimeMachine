@@ -3,8 +3,12 @@
 #include <string.h>
 #include <utility>
 
-ApplicationApi::ApplicationApi(MDS_HTTP& http, MDS_Config& config, MatrixDriver& matrix, Display::CommandQueue& commands, MDS_Weather* weather)
-	: http_(http), config_(config), matrix_(matrix), weather_(weather), commands_(commands) {}
+ApplicationApi::ApplicationApi(MDS_HTTP& http, MDS_Config& config, MatrixDriver& matrix, Display::CommandQueue& commands, MDS_Weather* weather):
+	http_(http), 
+	config_(config), 
+	matrix_(matrix), 
+	weather_(weather), 
+	commands_(commands) {}
 
 // Forward native route registration without repeating the wrapper plumbing.
 void ApplicationApi::on(const char* path, HTTPMethod method, MDS_HTTPServer::THandlerFunction handler) {

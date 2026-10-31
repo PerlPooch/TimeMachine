@@ -3,12 +3,18 @@
 #include "SystemConfig.h"
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include "SerialProtocol.h"
 
-Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, Button& button)
-	: mode_(mode), matrix_(matrix), oled_(oled), button_(button), display_(matrix), api_(http_, config_, matrix_, display_.commands(), &weather_),
-	  timeController_(time_, config_, oled_), weatherController_(weather_, config_),
-	  clock_(time_, display_.commands(), oled_), tests_(matrix_, display_, oled_) {}
+Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, Button& button):
+	mode_(mode),
+	matrix_(matrix),
+	oled_(oled),
+	button_(button),
+	display_(matrix),
+	api_(http_, config_, matrix_, display_.commands(), &weather_),
+	timeController_(time_, config_, oled_), weatherController_(weather_, config_),
+	clock_(time_, display_.commands(), oled_), tests_(matrix_, display_, oled_) {}
 
 const char* Application::stateName(State state) {
 	switch (state) {
@@ -171,8 +177,8 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	MDS_WiFi::Options wifiOptions;
 	wifiOptions.accessPointPrefix = "Time Machine";
 	wifiOptions.portalTitle = "Time Machine Configuration";
-	// Retry saved credentials in the background; no credentials still opens provisioning.
-	wifiOptions.connectionPolicy = MDS_WiFi::ConnectionPolicy::RetrySavedNetwork;
+	// Keep A/B reception active during both saved-network retries and provisioning.
+	wifiOptions.connectionPolicy = MDS_WiFi::ConnectionPolicy::RetrySavedNetworkAsync;
 	Serial.println("Startup: beginning WiFi");
 	const bool wifiStarted = wifi_.begin(wifiOptions);
 	Serial.println(wifi_.ready() ? "Startup: WiFi online" :
@@ -228,13 +234,19 @@ void Application::serviceHttp() {
 	}
 }
 
-// Print length-delimited payloads, including embedded NULs, to the USB console.
+// Dispatch sensitive frames before logging other length-delimited payloads.
 void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, const char* name) {
 	using Result = SerialProtocol::Receiver::Result;
 	auto report = [&](Result result) {
 		if (result == Result::None) {
 			return;
 		}
+
+		if (result == Result::Message && SerialProtocol::isWiFiCredentials(receiver.payload(), receiver.length())) {
+			receiveWiFiCredentials(receiver.payload(), receiver.length(), name);
+			return;
+		}
+
 		uint32_t primaryMillis = 0;
 		const bool timestampedPing = result == Result::Message
 			&& SerialProtocol::decodePing(receiver.payload(), receiver.length(), primaryMillis);
@@ -272,6 +284,62 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 	}
 }
 
+// A non-master adopts credentials from either physical link, even while offline.
+void Application::receiveWiFiCredentials(const uint8_t* payload, size_t length, const char* portName) {
+	Serial.print("Serial ");
+	Serial.print(portName);
+
+	if (config_.get("primary").as<bool>()) {
+		Serial.println(" WiFi credentials ignored by primary");
+		return;
+	}
+
+	SerialProtocol::WiFiCredentials credentials;
+	if (!SerialProtocol::decodeWiFiCredentials(payload, length, credentials)) {
+		Serial.println(" error: invalid WiFi credentials");
+		return;
+	}
+
+	const bool accepted = wifi_.setCredentials(credentials.ssid, credentials.password);
+	Serial.println(accepted ? " WiFi credentials accepted" : " error: WiFi credentials rejected");
+}
+
+// Read saved station settings independently of connectivity and queue each idle port.
+void Application::queueWiFiCredentials(uint32_t now) {
+	bool due[2] = {};
+	for (size_t index = 0; index < 2; ++index) {
+		due[index] = !serialTransmit_[index].length
+			&& uint32_t(now - lastWiFiAt_[index]) >= WiFiBroadcastIntervalMs;
+	}
+	if (!due[0] && !due[1]) {
+		return;
+	}
+
+	wifi_config_t saved = {};
+	SerialProtocol::WiFiCredentials credentials;
+	const bool readable = esp_wifi_get_config(WIFI_IF_STA, &saved) == ESP_OK;
+	if (readable) {
+		memcpy(credentials.ssid, saved.sta.ssid, 32);
+		memcpy(credentials.password, saved.sta.password, 64);
+	}
+
+	for (size_t index = 0; index < 2; ++index) {
+		if (!due[index]) {
+			continue;
+		}
+
+		lastWiFiAt_[index] = now;
+		if (!readable || !credentials.ssid[0]) {
+			continue; // Try again in ten seconds, including after a manual portal save.
+		}
+
+		auto& pending = serialTransmit_[index];
+		pending.length = SerialProtocol::encodeWiFiCredentials(credentials, pending.frame, sizeof(pending.frame));
+		pending.sent = 0;
+		pending.credentials = pending.length != 0;
+	}
+}
+
 // Reserve every selected queue before changing any queue or applying locally.
 bool Application::routeDisplayCommand(const Display::DisplayCommand& command) {
 	for (size_t index = 0; index < 2; ++index) {
@@ -286,6 +354,7 @@ bool Application::routeDisplayCommand(const Display::DisplayCommand& command) {
 			auto& pending = serialTransmit_[index];
 			pending.length = SerialProtocol::encode(payload, length, pending.frame, sizeof(pending.frame));
 			pending.sent = 0;
+			pending.credentials = false;
 		}
 	}
 	return true;
@@ -296,32 +365,43 @@ void Application::serviceSerial() {
 	if (config_.get("primary").as<bool>()) display_.resetMillisDelta();
 	receiveSerial(serialA_, receiverA_, "A");
 	receiveSerial(serialB_, receiverB_, "B");
+
+	const bool primary = config_.get("primary").as<bool>();
+	const uint32_t now = millis();
+	if (primary && !primaryActive_) {
+		primaryActive_ = true;
+		lastPingAt_[0] = lastPingAt_[1] = now - PingIntervalMs;
+		lastWiFiAt_[0] = lastWiFiAt_[1] = now - WiFiBroadcastIntervalMs;
+	}
+	if (primary) {
+		queueWiFiCredentials(now);
+	}
+
 	HardwareSerial* ports[] = {&serialA_, &serialB_};
-	bool displaySent[2] = {};
+	bool frameSent[2] = {};
 	for (size_t index = 0; index < 2; ++index) {
 		auto& pending = serialTransmit_[index];
+		// Drop an unsent broadcast after demotion; finish partial frames intact.
+		if (!primary && pending.credentials && !pending.sent) {
+			pending = SerialTransmit{};
+		}
 		if (!pending.length) continue;
-		displaySent[index] = true;
+		frameSent[index] = true;
 		const int room = ports[index]->availableForWrite();
 		if (room <= 0) continue;
 		const size_t remaining = pending.length - pending.sent;
 		const size_t count = remaining < static_cast<size_t>(room) ? remaining : static_cast<size_t>(room);
 		pending.sent += ports[index]->write(pending.frame + pending.sent, count);
-		if (pending.sent == pending.length) pending.length = pending.sent = 0;
+		if (pending.sent == pending.length) pending = SerialTransmit{};
 	}
-	if (!config_.get("primary").as<bool>()) {
+	if (!primary) {
 		primaryActive_ = false;
 		return;
-	}
-	const uint32_t now = millis();
-	if (!primaryActive_) {
-		primaryActive_ = true;
-		lastPingAt_[0] = lastPingAt_[1] = now - PingIntervalMs;
 	}
 	uint8_t frame[SerialProtocol::PingBufferBytes];
 	const size_t length = SerialProtocol::encodePing(now, frame, sizeof(frame));
 	for (size_t index = 0; index < 2; ++index) {
-		if (!displaySent[index] && uint32_t(now - lastPingAt_[index]) >= PingIntervalMs
+		if (!frameSent[index] && uint32_t(now - lastPingAt_[index]) >= PingIntervalMs
 			&& ports[index]->availableForWrite() >= static_cast<int>(length)
 			&& ports[index]->write(frame, length) == length) {
 			lastPingAt_[index] = now;

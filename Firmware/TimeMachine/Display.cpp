@@ -252,7 +252,7 @@ bool Display::execute(const DisplayCommand& command) {
 // Compose calendar text and select the clock mode's indicator behavior.
 void Display::drawClock() {
 	Frame frame = clockValid_ ? clockIndicators_ : Frame{};
-	char text[14] = "NTP          ";
+	char text[14] = "-------------";
 	if (clockValid_) {
 		const unsigned hour = clockTime_.hour % 12 ? clockTime_.hour % 12 : 12;
 		snprintf(text, sizeof(text), "%s%02u%04u%02u%02u",
