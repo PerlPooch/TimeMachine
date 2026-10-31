@@ -218,10 +218,20 @@ void ApplicationApi::displayRequest() {
 				command.destinations = 0;
 				hasDestination = true;
 			}
-			if (value == "local") command.destinations |= Display::Local;
-			else if (value == "a") command.destinations |= Display::PortA;
-			else if (value == "b") command.destinations |= Display::PortB;
-			else { sendError(400, "Destination must be local, a, or b"); return; }
+
+			// Expand all to the existing destinations; repeated selections still send once.
+			if (value == "all") {
+				command.destinations |= Display::Local | Display::PortA | Display::PortB;
+			} else if (value == "local") {
+				command.destinations |= Display::Local;
+			} else if (value == "a") {
+				command.destinations |= Display::PortA;
+			} else if (value == "b") {
+				command.destinations |= Display::PortB;
+			} else {
+				sendError(400, "Destination must be local, a, b, or all");
+				return;
+			}
 		} else if (key == "message" || key == "scroll" || key == "slide" || key == "appear" || key == "fade") {
 			if (hasAction) {
 				sendError(400, "Provide exactly one message, scroll, appear, slide, or fade");
