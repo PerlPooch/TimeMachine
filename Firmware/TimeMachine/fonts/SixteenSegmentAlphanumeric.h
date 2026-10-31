@@ -108,6 +108,7 @@ namespace SixteenSegment {
 			}
 		}
 
+		// Map supported characters to logical alpha segments; unsupported characters are blank.
 		constexpr uint16_t glyph(char character) {
 			if (character >= 'a' && character <= 'z') {
 				const uint16_t lower = lowercase(character);

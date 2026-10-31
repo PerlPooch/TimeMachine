@@ -19,8 +19,10 @@ public:
 
 	// Retain explicit-current initialization for existing callers and diagnostics.
 	bool begin(uint8_t globalCurrent, const uint8_t* enabledChannels, uint8_t channelCount);
+
 	// Set normal current; cache before initialization, apply immediately when ready.
 	bool setConfiguredCurrent(uint8_t globalCurrent);
+
 	// Temporary hardware override; leaves the configured current unchanged.
 	bool setGlobalCurrent(uint8_t globalCurrent);
 
@@ -32,11 +34,19 @@ public:
 		return address < sizeof(logicalBrightness_) ? logicalBrightness_[address] : 0;
 	}
 
-	// Return ceilings, constructor GCC, and current GCC (configured before first begin).
+	// Report the runtime brightness ceiling independently of the output profile.
 	uint8_t brightnessLimit() const { return brightnessLimit_; }
+
+	// Report the active hardware current, or the selected value before initialization.
 	uint8_t globalCurrent() const { return globalCurrent_; }
+
+	// Report the constructor current value independently of later setting changes.
 	uint8_t initialCurrent() const { return initialCurrent_; }
+
+	// Report normal configured current independently of temporary hardware adjustments.
 	uint8_t configuredCurrent() const { return configuredCurrent_; }
+
+	// Report the output profile ceiling before the runtime brightness limit is applied.
 	uint8_t maximumPWM() const { return maximumPWM_; }
 
 	// Return the smaller ceiling actually used for gamma-corrected PWM output.

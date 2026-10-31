@@ -13,6 +13,7 @@ void Display::synchronizeMillis(uint32_t primaryMillis) {
 	setMillisDelta(uint32_t(primaryMillis - millis()));
 }
 
+// Shift active animation timestamps with the clock offset to preserve elapsed durations.
 void Display::setMillisDelta(uint32_t delta) {
 	const uint32_t shift = delta - millisDelta_;
 	millisDelta_ = delta;
@@ -164,6 +165,7 @@ bool Display::fadeTo(uint8_t level, uint32_t durationMs) {
 	return true;
 }
 
+// Overlay the populated segments with a fade/hold/fade sequence while retaining target content.
 bool Display::lampTest() {
 	if (!matrix_.ready()) {
 		return false;
@@ -178,6 +180,7 @@ bool Display::lampTest() {
 	return flush();
 }
 
+// End the lamp overlay and restore retained content at full logical intensity.
 bool Display::cancelLampTest() {
 	if (!segmentTesting_) {
 		return matrix_.ready();
@@ -404,7 +407,7 @@ void Display::drawScroll() {
 	}
 	char window[DisplayMap::DigitCount + 1];
 	const size_t length = scrollText_.length();
-	
+
 	for (size_t digit = 0; digit < DisplayMap::DigitCount; ++digit) {
 		const size_t offset = scrollDirection_ == Direction::Left
 			? scrollStep_ + digit : length + digit;
@@ -458,6 +461,7 @@ void Display::drawAppear() {
 	drawText(target_, window);
 }
 
+// Own the text and start shared scroll, slide, or grouped-reveal timing without waiting.
 bool Display::startTextMotion(const char* text, uint32_t delayMs, Direction direction, bool slide, bool appear) {
 	if (!matrix_.ready()) {
 		return false;

@@ -1,9 +1,11 @@
 #include "Clock.h"
 #include <MDS_Display.h>
 
+// Borrow time, status output, and command submission without access to the renderer.
 Clock::Clock(MDS_Time& time, Display::CommandQueue& commands, MDS_Display& oled)
 	: time_(time), commands_(commands), oled_(oled) {}
 
+// Enable clock publishing and submit the initial waiting-for-time state.
 bool Clock::begin() {
 	enabled_ = true;
 
@@ -42,9 +44,10 @@ bool Clock::publish(const struct tm* local) {
 	return commands_.post(command);
 }
 
+// Publish changed local time or configuration, retrying when a snapshot is not accepted.
 void Clock::tick() {
 	if (!enabled_) return;
-	
+
 	if (timeConfiguration_ != time_.configurationVersion()) {
 		timeConfiguration_ = time_.configurationVersion();
 		published_ = false;

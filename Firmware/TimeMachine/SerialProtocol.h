@@ -27,12 +27,15 @@ inline size_t encode(const char* payload, size_t length, uint8_t* output, size_t
 // Timestamped ping remains human-readable on the USB diagnostics console.
 constexpr size_t MaxPingPayloadBytes = 15; // "ping " + ten decimal digits.
 constexpr size_t PingBufferBytes = MaxPingPayloadBytes + 3;
+
+// Frame a primary timestamp for display timing synchronization.
 inline size_t encodePing(uint32_t timestamp, uint8_t* output, size_t capacity) {
 	char payload[MaxPingPayloadBytes + 1];
 	const int length = snprintf(payload, sizeof(payload), "ping %lu", static_cast<unsigned long>(timestamp));
 	return length > 0 ? encode(payload, static_cast<size_t>(length), output, capacity) : 0;
 }
 
+// Validate the timestamp text without accepting overflow or trailing characters.
 inline bool decodePing(const uint8_t* payload, size_t length, uint32_t& timestamp) {
 	if (!payload || length < 6 || length > MaxPingPayloadBytes || memcmp(payload, "ping ", 5) != 0) return false;
 	uint32_t value = 0;
@@ -103,6 +106,7 @@ public:
 	enum class Result { None, Message, InvalidLength, InvalidTerminator, Timeout };
 	static constexpr uint32_t TimeoutMs = 100;
 
+	// Abandon incomplete reception after an idle timeout, even when no new byte arrives.
 	Result expire(uint32_t now) {
 		if (state_ != State::Length && uint32_t(now - lastByteAt_) >= TimeoutMs) {
 			reset();
@@ -111,6 +115,7 @@ public:
 		return Result::None;
 	}
 
+	// Advance framing by one byte and report a complete message or a framing error.
 	Result feed(uint8_t byte, uint32_t now) {
 		lastByteAt_ = now;
 		switch (state_) {
@@ -147,8 +152,13 @@ public:
 		return Result::None;
 	}
 
+	// Restart framing while retaining completed payload data for immediate dispatch.
 	void reset() { state_ = State::Length; }
+
+	// Expose payload bytes for application dispatch using length(), rather than a delimiter.
 	const uint8_t* payload() const { return payload_; }
+
+	// Report the exact payload length, including any embedded binary bytes.
 	size_t length() const { return length_; }
 
 private:

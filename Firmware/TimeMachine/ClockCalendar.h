@@ -17,12 +17,14 @@ namespace ClockCalendar {
 		"JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
 	};
 
+	// Return the month length using Gregorian leap-year rules.
 	inline uint8_t daysInMonth(uint16_t year, uint8_t month) {
 		constexpr uint8_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 		const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
 		return days[month - 1] + (month == 2 && leap ? 1 : 0);
 	}
 
+	// Advance calendar values across day, month, and year boundaries, including leap dates.
 	inline void advanceSeconds(DateTime& time, uint32_t seconds) {
 		const uint64_t total = uint64_t(time.hour) * 3600
 			+ uint32_t(time.minute) * 60 + time.second + uint64_t(seconds);

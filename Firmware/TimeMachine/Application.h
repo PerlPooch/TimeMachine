@@ -47,6 +47,8 @@ public:
 	// Success starts the asynchronous lamp test; the selected mode begins afterward.
 	bool begin(const char* version, const char* boardRole, bool busReady, bool oledReady);
 	void tick();
+
+	// Report the current lifecycle state without advancing application work.
 	State state() const { return state_; }
 
 private:

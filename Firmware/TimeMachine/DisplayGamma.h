@@ -25,12 +25,14 @@ namespace DisplayGamma {
 		223, 225, 227, 229, 231, 234, 236, 238, 240, 242, 244, 246, 248, 251, 253, 255,
 	};
 
+	// Convert logical brightness through the fixed gamma table without runtime floating point.
 	constexpr uint8_t applyGamma22(uint8_t brightness) {
 		return Gamma22[brightness];
 	}
 
 	constexpr uint8_t DefaultMaximumPWM = DISPLAY_DEV_MODE ? DISPLAY_DEV_MAX_PWM : 255;
 
+	// Apply gamma once, then scale the corrected value to the selected PWM ceiling.
 	inline uint8_t toPWM(uint8_t brightness, uint8_t maximumPWM) {
 #if DISPLAY_GAMMA_ENABLED
 		const uint8_t pwm = applyGamma22(brightness);
@@ -41,6 +43,7 @@ namespace DisplayGamma {
 		return (uint16_t(pwm) * maximumPWM + 127) / 255;
 	}
 
+	// Use the normal output profile for callers without an explicit PWM ceiling.
 	inline uint8_t toPWM(uint8_t brightness) {
 		return toPWM(brightness, DefaultMaximumPWM);
 	}

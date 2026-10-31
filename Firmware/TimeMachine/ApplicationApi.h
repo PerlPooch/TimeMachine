@@ -17,15 +17,17 @@ public:
 	ApplicationApi& operator=(const ApplicationApi&) = delete;
 
 	using DisplayRouter = std::function<bool(const Display::DisplayCommand&)>;
+
+	// Install the callback that asks Application to accept selected serial destinations.
 	void setDisplayRouter(DisplayRouter router) { displayRouter_ = std::move(router); }
 	static size_t encodeDisplayCommand(const Display::DisplayCommand& command, char* output, size_t capacity);
 	bool receiveDisplayCommand(const uint8_t* payload, size_t length);
-
 
 	// Register config, display-action, and optional weather routes once.
 	void begin();
 
 private:
+	// Access the existing HTTP server used for handler registration and responses.
 	MDS_HTTPServer& server() { return http_.server(); }
 	void on(const char* path, HTTPMethod method, MDS_HTTPServer::THandlerFunction handler);
 	bool syncDisplaySettings(bool applyCurrent = false);

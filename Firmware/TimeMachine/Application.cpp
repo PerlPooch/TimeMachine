@@ -6,6 +6,7 @@
 #include <esp_wifi.h>
 #include "SerialProtocol.h"
 
+// Wire owned services to the hardware and command queue supplied at construction.
 Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, Button& button):
 	mode_(mode),
 	matrix_(matrix),
@@ -16,6 +17,7 @@ Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, But
 	timeController_(time_, config_, oled_), weatherController_(weather_, config_),
 	clock_(time_, display_.commands(), oled_), tests_(matrix_, display_, oled_) {}
 
+// Provide readable lifecycle names for transition reports.
 const char* Application::stateName(State state) {
 	switch (state) {
 		case State::Uninitialized: return "Uninitialized";
@@ -100,6 +102,7 @@ void Application::transitionTo(State next) {
 	}
 }
 
+// Load settings and select display limits before matrix initialization.
 bool Application::beginConfig() {
 	if (!config_.setSettings(SystemConfig::Settings)) {
 		Serial.println(config_.lastError());
@@ -129,6 +132,7 @@ bool Application::beginConfig() {
 	return true;
 }
 
+// Start shared services and the lamp animation using reported hardware readiness.
 bool Application::begin(const char* version, const char* boardRole, bool busReady, bool oledReady) {
 	// Guard against calls to begin() except from Uninitialized or ConfigFault
 	if (state_ != State::Uninitialized && state_ != State::ConfigFault) {
@@ -200,9 +204,15 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	});
 	timeController_.begin(oledReady_);
 
-	weather_.setStatusCallback([](const String& message) {
+	weather_.setStatusCallback([this](const String& message) {
 		Serial.println(message);
+
+		// Apply timezone only after the weather service accepts a successful result.
+		if (message == "Weather: updated") {
+			weatherController_.applyTimezone();
+		}
 	});
+
 	weatherController_.tick(wifi_.ready(), time_.valid());
 
 	// A missing display still permits network and configuration services.
@@ -211,6 +221,7 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	return state_ == State::SegmentTest;
 }
 
+// Start the selected display behavior after the lamp animation completes.
 bool Application::beginMode() {
 	switch (mode_) {
 		case Mode::Tests:
@@ -223,6 +234,7 @@ bool Application::beginMode() {
 	return false;
 }
 
+// Start or stop the HTTP listener as station connectivity changes.
 void Application::serviceHttp() {
 	if (wifi_.ready()) {
 		if (!http_.running()) {
@@ -420,6 +432,7 @@ void Application::showReset() {
 	}
 }
 
+// Clear application settings and Wi-Fi credentials, rebooting only after both succeed.
 void Application::factoryReset() {
 	if (!display_.clear()) {
 		Serial.println("Reset: cannot blank display; continuing reset");
@@ -453,6 +466,7 @@ void Application::factoryReset() {
 	transitionTo(State::Rebooting);
 }
 
+// Handle reset hold, cancellation, and retry without restarting a resumed mode.
 void Application::serviceButton() {
 	if (button_.tick()) {
 		Serial.println(button_.pressed() ? "Reset: pressed" : "Reset: released");
@@ -490,6 +504,7 @@ void Application::serviceButton() {
 	}
 }
 
+// Service shared work in active states and advance rendering when the lifecycle permits it.
 void Application::tick() {
 	// These states are handled by begin(), entry actions, or the hardware restart.
 	switch (state_) {
@@ -540,7 +555,7 @@ void Application::tick() {
 		switch (mode_) {
 			case Mode::Tests:
 				tests_.tick();
-				
+
 				break;
 
 			case Mode::Clock:

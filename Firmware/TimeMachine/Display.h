@@ -33,15 +33,18 @@ public:
 		bool colonsBlink = false;
 	};
 
-	// Existing latest-pending-command mailbox, shared by all producers.
+	// Shared pending-command queue for all producers.
 	// Background clock updates never replace a waiting explicit command.
 	class CommandQueue {
 	public:
+		// Copy submitted content so command lifetime is independent of the producer.
 		bool post(const DisplayCommand& command) {
 			DisplayCommand copy = command;
 			if (copy.text.length() != command.text.length()) return false;
 			return post(std::move(copy));
 		}
+
+		// Transfer a prepared command, letting explicit work take priority over clock updates.
 		bool post(DisplayCommand&& command) {
 			if (command.kind == DisplayCommand::Kind::Clock && pending_
 				&& command_.kind != DisplayCommand::Kind::Clock) return false;
@@ -49,6 +52,8 @@ public:
 			pending_ = true;
 			return true;
 		}
+
+		// Transfer pending work to the renderer and release the pending slot.
 		bool take(DisplayCommand& command) {
 			if (!pending_) return false;
 			command = std::move(command_);
@@ -59,6 +64,8 @@ public:
 		DisplayCommand command_;
 		bool pending_ = false;
 	};
+
+	// Expose command submission without giving producers control of rendering.
 	CommandQueue& commands() { return commands_; }
 
 	enum class Indicator : uint8_t {
@@ -68,11 +75,14 @@ public:
 		Colon2 = DisplayMap::Colon2
 	};
 
+	// Bind the channel driver; display initialization remains explicit.
 	explicit Display(MatrixDriver& matrix) : matrix_(matrix) {}
 
 	// Shared animation clock; native millis() remains unchanged for other services.
 	uint32_t animationMillis() const { return uint32_t(millis() + millisDelta_); }
 	void synchronizeMillis(uint32_t primaryMillis);
+
+	// Restore local animation timing when operating as the primary board.
 	void resetMillisDelta() { setMillisDelta(0); }
 
 	// Enable all mounted digit segments and the four discrete indicators.
@@ -88,6 +98,8 @@ public:
 	// Empty text releases the override.
 	// Scrolls temporarily replace it; settled slides become the new held message.
 	bool setMessage(const char* text);
+
+	// Report whether held text or text motion currently takes priority over the clock.
 	bool hasOverride() const { return messageHeld_ || scrolling_; }
 
 	// Replace 13 characters, padding/truncating text; preserve indicators.
@@ -97,11 +109,15 @@ public:
 	// delayMs is per character step (0 is treated as 1 ms); tick() advances it.
 	// Copy the text, preserve indicators, and use each destination digit's font.
 	bool scrollText(const char* text, uint32_t delayMs, Direction direction = Direction::Left);
+
+	// Report a temporary scrolling pass rather than held slide/reveal motion.
 	bool scrolling() const { return scrolling_ && !sliding_; }
 
 	// Slide up to 13 characters in, stop at the far edge, and retain the final frame.
 	// Left motion settles left-aligned; right motion settles right-aligned.
 	bool slideText(const char* text, uint32_t delayMs, Direction direction = Direction::Left);
+
+	// Report slide motion independently of the grouped-reveal effect.
 	bool sliding() const { return scrolling_ && sliding_ && !appearing_; }
 
 	// Reveal fixed display groups (3, 2, 4, 2, 2) from the specified edge.
@@ -109,6 +125,8 @@ public:
 	// tick() reveals subsequent groups at delayMs intervals (0 means 1 ms).
 	// Preserve indicators and hold the completed text, like slideText().
 	bool appearText(const char* text, uint32_t delayMs, Direction direction = Direction::Left);
+
+	// Report whether a grouped reveal is active.
 	bool appearing() const { return scrolling_ && appearing_; }
 
 	// Replace only the three alpha characters; preserve numbers and indicators.
@@ -122,17 +140,25 @@ public:
 	// Animate a global logical intensity without changing individual target intensities.
 	// Call tick() from the application loop. Zero duration applies immediately.
 	bool fadeTo(uint8_t level, uint32_t durationMs);
+
+	// Restore full logical intensity over the requested duration.
 	bool fadeUp(uint32_t durationMs = 350) { return fadeTo(255, durationMs); }
+
+	// Fade to black without discarding display content.
 	bool fadeDown(uint32_t durationMs = 350) { return fadeTo(0, durationMs); }
+
+	// Report whether a global intensity transition is still active.
 	bool fading() const { return fading_; }
 
-	// Fade every fitted segment/indicator up, hold one second, then fade down.
+	// Fade every fitted segment/indicator up, hold, then fade down.
 	// Retain target edits made during the test and restore them on completion/cancel.
 	static constexpr uint32_t LampFadeMs = 750;
 	static constexpr uint32_t LampHoldMs = 2000;
 	static constexpr uint32_t LampDurationMs = 2 * LampFadeMs + LampHoldMs;
 	bool lampTest();
 	bool cancelLampTest();
+
+	// Report whether the startup lamp overlay is still active.
 	bool segmentTesting() const { return segmentTesting_; }
 	bool tick();
 

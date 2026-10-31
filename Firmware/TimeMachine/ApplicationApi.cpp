@@ -3,11 +3,12 @@
 #include <string.h>
 #include <utility>
 
+// Borrow application services and the shared queue without starting the HTTP listener.
 ApplicationApi::ApplicationApi(MDS_HTTP& http, MDS_Config& config, MatrixDriver& matrix, Display::CommandQueue& commands, MDS_Weather* weather):
-	http_(http), 
-	config_(config), 
-	matrix_(matrix), 
-	weather_(weather), 
+	http_(http),
+	config_(config),
+	matrix_(matrix),
+	weather_(weather),
 	commands_(commands) {}
 
 // Forward native route registration without repeating the wrapper plumbing.
@@ -24,6 +25,7 @@ bool ApplicationApi::syncDisplaySettings(bool applyCurrent) {
 	return !applyCurrent || matrix_.setConfiguredCurrent(config_.get("gcc").as<uint8_t>());
 }
 
+// Register long-lived handlers once; callbacks return to this API instance.
 void ApplicationApi::begin() {
 	if (!registered_) {
 		on("/",				HTTP_GET, [this]() { configRequest(); });
@@ -37,6 +39,7 @@ void ApplicationApi::begin() {
 	}
 }
 
+// Resolve request keys through the application setting definitions.
 const MDS_ConfigSetting* ApplicationApi::findSetting(const char* key) const {
 	size_t count;
 	const auto* settings = config_.settings(count);
@@ -50,6 +53,7 @@ const MDS_ConfigSetting* ApplicationApi::findSetting(const char* key) const {
 	return nullptr;
 }
 
+// Accept decimal integers only and reject overflow before applying a request.
 bool ApplicationApi::parseUnsigned(const String& text, uint32_t& value) {
 	if (!text.length()) {
 		return false;
@@ -76,6 +80,7 @@ bool ApplicationApi::parseUnsigned(const String& text, uint32_t& value) {
 	return true;
 }
 
+// Report failure separately from whether a runtime change has already been applied.
 void ApplicationApi::sendError(int code, const char* message, bool applied) {
 	JsonDocument response;
 	response["error"] = message;
@@ -86,6 +91,7 @@ void ApplicationApi::sendError(int code, const char* message, bool applied) {
 	server().send(code, "application/json", body);
 }
 
+// Return current nonsensitive settings without exposing stored credentials or keys.
 void ApplicationApi::sendConfig() {
 	JsonDocument response;
 	response.to<JsonObject>();
@@ -108,6 +114,7 @@ void ApplicationApi::sendConfig() {
 	server().send(200, "application/json", body);
 }
 
+// Validate grouped edits, apply display settings, and save only accepted changes.
 void ApplicationApi::configRequest() {
 	server().sendHeader("Cache-Control", "no-store");
 
@@ -205,7 +212,7 @@ void ApplicationApi::displayRequest() {
 	for(int index = 0; index < server().args(); ++index) {
 		const String key = server().argName(index);
 		const String value = server().arg(index);
-		
+
 		if (key == "to") {
 			if (!hasDestination) {
 				command.destinations = 0;

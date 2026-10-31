@@ -48,6 +48,7 @@ void setup() {
 	application.begin(VERSION, boardRole, busReady, oledReady);
 }
 
+// Advance application work and yield briefly between service passes.
 void loop() {
 	application.tick();
 	delay(1);

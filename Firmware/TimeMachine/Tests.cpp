@@ -25,9 +25,11 @@ namespace {
 
 using DisplayMap::Digits;
 
+// Borrow display hardware and rendering without initializing the shared bus.
 Tests::Tests(MatrixDriver& matrix, Display& display, MDS_Display& oled)
 	: matrix_(matrix), display_(display), oled_(oled) {}
 
+// Prepare the display and start the selected diagnostic from its initial state.
 bool Tests::begin() {
 	testRunning = false;
 	animationPhase = AnimationPhase::Stopped;

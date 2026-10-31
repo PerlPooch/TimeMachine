@@ -1,6 +1,7 @@
 #include "TimeController.h"
 #include <MDS_Display.h>
 
+// Apply current timezone and NTP settings, reporting only changed configuration errors.
 bool TimeController::configure() {
 	MDS_Time::Options options;
 	options.timeZone = config_.get("timeZone").as<const char*>();
@@ -25,11 +26,13 @@ bool TimeController::configure() {
 	return true;
 }
 
+// Record OLED availability and apply the initial configured or default timezone.
 bool TimeController::begin(bool oledReady) {
 	oledReady_ = oledReady;
 	return configure();
 }
 
+// Apply setting changes, including weather updates, before servicing network time.
 void TimeController::tick(bool networkReady) {
 	configure();
 	time_.tick(networkReady);

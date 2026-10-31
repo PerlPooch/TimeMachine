@@ -8,6 +8,7 @@ class MDS_Display;
 // Apply application time settings and service NTP independently of display modes.
 class TimeController {
 public:
+	// Borrow settings, the time service, and status output without starting synchronization.
 	TimeController(MDS_Time& time, MDS_Config& config, MDS_Display& oled)
 		: time_(time), config_(config), oled_(oled) {}
 
