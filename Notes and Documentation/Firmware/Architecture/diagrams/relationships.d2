@@ -1,0 +1,53 @@
+direction: down
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+Sketch: "TimeMachine.ino — owns everything inside" {
+  hardware: "Hardware instances" {
+    matrix: "MatrixDriver\nmatrix"
+    oled: "MDS_Display\noled"
+    button: "Button\nbutton"
+  }
+  app: "application: Application — owns everything inside" {
+    api: "ApplicationApi\napi_"
+    config: "MDS_Config\nconfig_"
+    http: "MDS_HTTP\nhttp_"
+    wifi: "MDS_WiFi\nwifi_"
+    tc: "TimeController\ntimeController_"
+    time: "MDS_Time\ntime_"
+    wc: "WeatherController\nweatherController_"
+    weather: "MDS_Weather\nweather_"
+    clock: "Clock\nclock_"
+    display: "display_: Display" {
+      queue: "commands_: CommandQueue"
+    }
+    serial: "serialA_ / serialB_\nHardwareSerial × 2"
+    rx: "receiverA_ / receiverB_\nReceiver × 2"
+
+    api -> config: "settings"
+    api -> http: "routes"
+    api -> weather: "cached status"
+    tc -> config
+    tc -> time
+    wc -> config
+    wc -> weather
+    clock -> time
+    clock -> display.queue: "post"
+    api -> display.queue: "post"
+    display.queue -> display: "consume" {
+      style.stroke-dash: 4
+    }
+    api -> serial: "via Application callback" {
+      style.stroke-dash: 4
+    }
+    rx -> api: "via Application dispatch" {
+      style.stroke-dash: 4
+    }
+  }
+  app.display -> hardware.matrix
+  app.api -> hardware.matrix: "PWM / current"
+  app.clock -> hardware.oled
+  app.tc -> hardware.oled
+}

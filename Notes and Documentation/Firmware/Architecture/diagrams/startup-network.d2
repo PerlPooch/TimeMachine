@@ -1,0 +1,24 @@
+shape: sequence_diagram
+app: "application\nApplication"
+wifi: "wifi_\nMDS_WiFi"
+api: "api_\nApplicationApi"
+http: "http_\nMDS_HTTP"
+app.note: "Continuation inside Application.begin().\nCallback registration and diagnostic output abbreviated."
+app.begin -> wifi.cb: "setStatusCallback(callback to Application / OLED)"
+wifi.cb -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> wifi.begin: "begin(RetrySavedNetworkAsync options)"
+wifi.begin -> app.begin: "started / waiting / retrying; no station connection required" {style.stroke-dash: 4}
+app.begin -> api.router: "setDisplayRouter(callback to Application)"
+api.router -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> api.begin: "begin()"
+api.begin -> http.server: "server()"
+http.server -> api.begin: "server reference" {style.stroke-dash: 4}
+api.begin -> api.begin: "Register config, display and weather handlers on server"
+api.begin -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> wifi.ready: "ready()"
+wifi.ready -> app.begin: "networkReady" {style.stroke-dash: 4}
+when_online: "opt [networkReady and HTTP not running]" {
+  app.begin -> http.begin: "begin()"
+  http.begin -> app.begin: "HTTP listener started" {style.stroke-dash: 4}
+}
+app.note2: "If offline, listener startup is deferred to a later tick().\nApplication.begin() continues in phase 3."

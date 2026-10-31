@@ -1,0 +1,34 @@
+shape: sequence_diagram
+runtime: "Arduino runtime"
+app: "application\nApplication"
+button: "button\nButton"
+wire: "Wire\nTwoWire"
+oled: "oled\nMDS_Display"
+config: "config_\nMDS_Config"
+matrix: "matrix\nMatrixDriver"
+runtime.note: "Starts at setup(); all named objects already constructed.\nNormal path: hardware and configuration initialization succeed."
+runtime.setup -> runtime.setup: "Blank matrix; start USB serial; read board label"
+runtime.setup -> button.init: "begin()"
+button.init -> runtime.setup: "return" {style.stroke-dash: 4}
+runtime.setup -> wire.init: "begin(SDA, SCL, 100000)"
+wire.init -> runtime.setup: "busReady = true" {style.stroke-dash: 4}
+runtime.setup -> oled.init: "setup() [bus ready]"
+oled.init -> runtime.setup: "oledReady = true" {style.stroke-dash: 4}
+runtime.setup -> app.begin: "begin(version, boardRole, true, true)"
+app.begin -> app.begin: "transitionTo(Starting)"
+app.begin -> config.registry: "setSettings(SystemConfig::Settings)"
+config.registry -> app.begin: "true" {style.stroke-dash: 4}
+app.begin -> config.mount: "setup()"
+config.mount -> app.begin: "filesystem ready" {style.stroke-dash: 4}
+app.begin -> config.load: "load() [saved file exists]"
+config.load -> app.begin: "settings loaded" {style.stroke-dash: 4}
+app.begin -> config.read: "get(gcc); get(pwm)"
+config.read -> app.begin: "configured current / brightness ceiling" {style.stroke-dash: 4}
+app.begin -> matrix.current: "setConfiguredCurrent(gcc)"
+matrix.current -> app.begin: "true; cached before driver initialization" {style.stroke-dash: 4}
+app.begin -> matrix.pwm: "setBrightnessLimit(pwm)"
+matrix.pwm -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> app.begin: "Initialize UART A/B; dump config"
+app.begin -> oled.status: "D(name / version / board / starting Wi-Fi)"
+oled.status -> app.begin: "OLED updated immediately" {style.stroke-dash: 4}
+app.note: "Application.begin() remains active; continues in phase 2.\nsetup() remains active until Application.begin() returns."

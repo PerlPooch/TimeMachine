@@ -1,0 +1,34 @@
+shape: sequence_diagram
+runtime: "Arduino runtime"
+app: "application\nApplication"
+tc: "timeController_\nTimeController"
+time: "time_\nMDS_Time"
+wc: "weatherController_\nWeatherController"
+weather: "weather_\nMDS_Weather"
+display: "display_\nDisplay"
+matrix: "matrix\nMatrixDriver"
+app.note: "Continuation inside Application.begin().\nControllers read options from config_; those reads are omitted."
+app.begin -> time.cb: "setStatusCallback(callback to Application / OLED)"
+time.cb -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> tc.begin: "begin(oledReady)"
+tc.begin -> time.begin: "begin(configured/default timezone, NTP servers, interval)"
+time.begin -> tc.begin: "options configured; NTP starts in later tick()" {style.stroke-dash: 4}
+tc.begin -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> weather.cb: "setStatusCallback(status / timezone callback to Application)"
+weather.cb -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> wc.tick: "tick(wifi.ready(), time.valid())"
+wc.tick -> weather.begin: "begin(API key, location, interval)"
+weather.begin -> wc.tick: "return" {style.stroke-dash: 4}
+wc.tick -> weather.tick: "tick(networkReady, clockReady)"
+weather.tick -> wc.tick: "collect / schedule only when eligible" {style.stroke-dash: 4}
+wc.tick -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> app.begin: "transitionTo(SegmentTest)"
+app.begin -> display.begin: "begin()"
+display.begin -> matrix.begin: "begin(mapped channels, configured current)"
+matrix.begin -> display.begin: "matrix ready" {style.stroke-dash: 4}
+display.begin -> app.begin: "true" {style.stroke-dash: 4}
+app.begin -> display.lamp: "lampTest()"
+display.lamp -> app.begin: "true; animation scheduled" {style.stroke-dash: 4}
+app.begin -> runtime.setup: "true; startup lamp test active" {style.stroke-dash: 4}
+runtime.setup -> runtime.setup: "setup() completes"
+runtime.note: "Objects remain alive. loop() now advances startup via tick().\nClock.begin() happens after the lamp sequence, not in setup()."

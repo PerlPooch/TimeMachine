@@ -1,0 +1,52 @@
+shape: sequence_diagram
+runtime: "Arduino runtime"
+app: "application\nApplication"
+display: "display_\nDisplay"
+clock: "clock_\nClock"
+time: "time_\nMDS_Time"
+queue: "commands_\nDisplay::CommandQueue"
+matrix: "matrix\nMatrixDriver"
+oled: "oled\nMDS_Display"
+runtime.note: "After setup(): repeated loop() passes advance the lamp animation.\nObjects remain alive throughout; only method execution is shown by bars."
+repeat: "loop [while startup lamp animation is active]" {
+  runtime.loop -> app.tick: "tick()"
+  app.note: "Poll button; service Wi-Fi, HTTP, UART, time and weather.\nThese synchronous calls are omitted from this view."
+  app.tick -> display.tick: "tick() [SegmentTest state]"
+  display.tick -> matrix.write: "writeBrightness() [output changed]"
+  matrix.write -> display.tick: "success" {style.stroke-dash: 4}
+  display.tick -> app.tick: "success; animation still active" {style.stroke-dash: 4}
+  app.tick -> oled.tick: "tick() [OLED ready]"
+  oled.tick -> app.tick: "return" {style.stroke-dash: 4}
+  app.tick -> runtime.loop: "return" {style.stroke-dash: 4}
+  runtime.loop -> runtime.loop: "delay(1)"
+}
+completion: "Lamp completion pass (~3.5 seconds after lampTest())" {
+  runtime.next -> app.next: "tick()"
+  app.note2: "Poll button and service shared services again (omitted)."
+  app.next -> display.finish: "tick()"
+  display.finish -> app.next: "success; segmentTesting() now false" {style.stroke-dash: 4}
+  app.next -> app.next: "transitionTo(Running); beginMode()"
+  app.next -> clock.begin: "begin()"
+  clock.begin -> queue.waiting: "post(waiting-for-time command)"
+  queue.waiting -> clock.begin: "return" {style.stroke-dash: 4}
+  clock.begin -> oled.status: "D(Clock: waiting for NTP)"
+  oled.status -> clock.begin: "OLED updated immediately" {style.stroke-dash: 4}
+  clock.begin -> app.next: "true" {style.stroke-dash: 4}
+  app.next -> clock.tick: "tick() [same pass]"
+  clock.tick -> time.valid: "valid(); localTime() if valid"
+  time.valid -> clock.tick: "time validity / local calendar" {style.stroke-dash: 4}
+  valid_time: "opt [valid time and update due]" {
+    clock.tick -> queue.now: "post(current-time command)"
+    queue.now -> clock.tick: "return" {style.stroke-dash: 4}
+  }
+  clock.tick -> app.next: "return" {style.stroke-dash: 4}
+  app.next -> display.render: "tick()"
+  display.render -> queue.take: "take(command)"
+  queue.take -> display.render: "pending command, if any" {style.stroke-dash: 4}
+  display.render -> matrix.render: "writeBrightness() [output changed]"
+  matrix.render -> display.render: "success" {style.stroke-dash: 4}
+  display.render -> app.next: "success" {style.stroke-dash: 4}
+  app.next -> oled.next: "tick() [OLED ready]"
+  oled.next -> app.next: "return" {style.stroke-dash: 4}
+  app.next -> runtime.next: "return; normal loop continues" {style.stroke-dash: 4}
+}
