@@ -477,19 +477,30 @@ void Application::queueWiFiCredentials(uint32_t now) {
 	}
 }
 
-// Reserve every selected queue before changing any queue or applying locally.
+// Encode display-specific content and delegate serial delivery to the shared payload router.
 bool Application::routeDisplayCommand(const Display::DisplayCommand& command) {
-	for (size_t index = 0; index < 2; ++index) {
-		if ((command.destinations & (index == 0 ? Display::PortA : Display::PortB))
-			&& serialTransmit_[index].length) return false;
-	}
 	char payload[SerialProtocol::MaxPayloadBytes + 1];
 	const size_t length = ApplicationApi::encodeDisplayCommand(command, payload, sizeof(payload));
-	if (!length) return false;
+
+	return length && routeSerialPayload(command.destinations, payload, length);
+}
+
+// Reserve all selected ports before queueing a framed payload; local execution remains with the caller.
+bool Application::routeSerialPayload(uint8_t destinations, const char* payload, size_t length) {
 	for (size_t index = 0; index < 2; ++index) {
-		if (command.destinations & (index == 0 ? Display::PortA : Display::PortB)) {
+		if ((destinations & (index == 0 ? Display::PortA : Display::PortB))
+			&& serialTransmit_[index].length) return false;
+	}
+
+	uint8_t frame[SerialProtocol::BufferBytes];
+	const size_t frameLength = SerialProtocol::encode(payload, length, frame, sizeof(frame));
+	if (!frameLength) return false;
+
+	for (size_t index = 0; index < 2; ++index) {
+		if (destinations & (index == 0 ? Display::PortA : Display::PortB)) {
 			auto& pending = serialTransmit_[index];
-			pending.length = SerialProtocol::encode(payload, length, pending.frame, sizeof(pending.frame));
+			memcpy(pending.frame, frame, frameLength + 1);
+			pending.length = frameLength;
 			pending.sent = 0;
 			pending.credentials = false;
 			pending.ipAddress = false;

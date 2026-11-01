@@ -63,6 +63,7 @@ private:
 	void queueWiFiCredentials(uint32_t now);
 	void receiveWiFiCredentials(const uint8_t* payload, size_t length, const char* portName);
 	bool routeDisplayCommand(const Display::DisplayCommand& command);
+	bool routeSerialPayload(uint8_t destinations, const char* payload, size_t length);
 	void receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, size_t index, const char* name);
 	void serviceButton();
 	void showReset();
