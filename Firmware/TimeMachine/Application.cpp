@@ -198,6 +198,15 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 		(wifiStarted ? "Startup: WiFi waiting for station/IP" : "Startup: WiFi retrying in loop"));
 
 	api_.setDisplayRouter([this](const Display::DisplayCommand& command) { return routeDisplayCommand(command); });
+
+	// Absolute offset inputs use real UTC, independently of the stored display offset.
+	api_.setTimeSource([this](int64_t& utc) {
+		if (!time_.valid()) return false;
+
+		utc = static_cast<int64_t>(time_.utcNow());
+		return true;
+	});
+
 	api_.begin();
 	serviceHttp();
 

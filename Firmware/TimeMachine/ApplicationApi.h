@@ -17,9 +17,13 @@ public:
 	ApplicationApi& operator=(const ApplicationApi&) = delete;
 
 	using DisplayRouter = std::function<bool(const Display::DisplayCommand&)>;
+	using TimeSource = std::function<bool(int64_t&)>;
 
 	// Install the callback that asks Application to accept selected serial destinations.
 	void setDisplayRouter(DisplayRouter router) { displayRouter_ = std::move(router); }
+
+	// Supply synchronized, unshifted UTC for converting absolute dates to stored offsets.
+	void setTimeSource(TimeSource source) { timeSource_ = std::move(source); }
 	static size_t encodeDisplayCommand(const Display::DisplayCommand& command, char* output, size_t capacity);
 	bool receiveDisplayCommand(const uint8_t* payload, size_t length);
 
@@ -38,12 +42,16 @@ private:
 	void sendError(int code, const char* message, bool applied = false);
 	const MDS_ConfigSetting* findSetting(const char* key) const;
 	static bool parseUnsigned(const String& text, uint32_t& value);
+	static bool parseSigned(const char* text, size_t length, int64_t& value);
+	static bool parseRelativeOffset(const String& text, int64_t& value);
+	static bool parseUTCDateTime(const String& text, int64_t& value);
 
 	MDS_HTTP& http_;
 	MDS_Config& config_;
 	MatrixDriver& matrix_;
 	MDS_Weather* weather_;
 	DisplayRouter displayRouter_;
+	TimeSource timeSource_;
 	Display::CommandQueue& commands_;
 	bool registered_ = false;
 };

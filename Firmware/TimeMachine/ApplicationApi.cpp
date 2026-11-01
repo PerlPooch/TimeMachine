@@ -1,5 +1,6 @@
 #include "ApplicationApi.h"
 #include "SerialProtocol.h"
+#include "ClockCalendar.h"
 #include <string.h>
 #include <utility>
 
@@ -80,6 +81,87 @@ bool ApplicationApi::parseUnsigned(const String& text, uint32_t& value) {
 	return true;
 }
 
+// Parse signed decimal text without floating point, truncation, or overflow at INT64_MIN.
+bool ApplicationApi::parseSigned(const char* text, size_t length, int64_t& value) {
+	if (!text || !length) return false;
+
+	const bool negative = text[0] == '-';
+	size_t index = text[0] == '-' || text[0] == '+' ? 1 : 0;
+	if (index == length) return false;
+
+	const uint64_t limit = uint64_t(INT64_MAX) + (negative ? 1u : 0u);
+	uint64_t magnitude = 0;
+
+	for (; index < length; ++index) {
+		if (text[index] < '0' || text[index] > '9') return false;
+
+		const uint8_t digit = text[index] - '0';
+		if (magnitude > (limit - digit) / 10) return false;
+		magnitude = magnitude * 10 + digit;
+	}
+
+	value = negative ? (magnitude == uint64_t(INT64_MAX) + 1u ? INT64_MIN : -int64_t(magnitude))
+		: int64_t(magnitude);
+	return true;
+}
+
+// Interpret a signed amount in seconds, minutes, hours, or 24-hour days as a replacement offset.
+bool ApplicationApi::parseRelativeOffset(const String& text, int64_t& value) {
+	const size_t length = text.length();
+	if (length < 3 || (text[0] != '+' && text[0] != '-')) return false;
+
+	int64_t factor;
+	switch (text[length - 1]) {
+		case 's': factor = 1; break;
+		case 'm': factor = 60; break;
+		case 'h': factor = 3600; break;
+		case 'd': factor = 86400; break;
+		default: return false;
+	}
+
+	int64_t amount;
+	if (!parseSigned(text.c_str(), length - 1, amount)
+		|| amount < INT64_MIN / factor || amount > INT64_MAX / factor) return false;
+
+	value = amount * factor;
+	return true;
+}
+
+// Convert exactly YYYY-MM-DDTHH:MM:SSZ to UTC seconds without using the configured timezone.
+bool ApplicationApi::parseUTCDateTime(const String& text, int64_t& value) {
+	if (text.length() != 20 || text[4] != '-' || text[7] != '-' || text[10] != 'T'
+		|| text[13] != ':' || text[16] != ':' || text[19] != 'Z') return false;
+
+	constexpr uint8_t starts[] = {0, 5, 8, 11, 14, 17};
+	constexpr uint8_t lengths[] = {4, 2, 2, 2, 2, 2};
+	int fields[6] = {};
+
+	for (size_t field = 0; field < 6; ++field) {
+		for (uint8_t digit = 0; digit < lengths[field]; ++digit) {
+			const char character = text[starts[field] + digit];
+			if (character < '0' || character > '9') return false;
+			fields[field] = fields[field] * 10 + character - '0';
+		}
+	}
+
+	const int year = fields[0], month = fields[1], day = fields[2];
+	if (year < 1 || month < 1 || month > 12 || day < 1
+		|| day > ClockCalendar::daysInMonth(year, month)
+		|| fields[3] > 23 || fields[4] > 59 || fields[5] > 59) return false;
+
+	// Count Gregorian days relative to 1970; 477 leap days precede that year.
+	const int previousYear = year - 1;
+	int64_t days = int64_t(year - 1970) * 365
+		+ previousYear / 4 - previousYear / 100 + previousYear / 400 - 477;
+
+	for (int previousMonth = 1; previousMonth < month; ++previousMonth) {
+		days += ClockCalendar::daysInMonth(year, previousMonth);
+	}
+
+	value = (days + day - 1) * 86400 + fields[3] * 3600 + fields[4] * 60 + fields[5];
+	return true;
+}
+
 // Report failure separately from whether a runtime change has already been applied.
 void ApplicationApi::sendError(int code, const char* message, bool applied) {
 	JsonDocument response;
@@ -130,6 +212,7 @@ void ApplicationApi::configRequest() {
 
 	JsonDocument updates;
 	updates.to<JsonObject>();
+	bool saveRequired = false;
 
 	for (int index = 0; index < server().args(); ++index) {
 		const String key = server().argName(index);
@@ -151,8 +234,46 @@ void ApplicationApi::configRequest() {
 		}
 
 		const String text = server().arg(index);
+		saveRequired = saveRequired || setting->persistent;
 
-		if (setting->type == MDS_ConfigType::Text) {
+		if (key == "timeOffset") {
+			int64_t offset;
+
+			if (text.length() && (text[0] == '+' || text[0] == '-')) {
+				if (!parseRelativeOffset(text, offset)) {
+					sendError(400, "Expected signed integer with s, m, h, or d; value must fit signed 64-bit seconds");
+					return;
+				}
+			} else {
+				int64_t target, current;
+				if (!parseUTCDateTime(text, target)) {
+					sendError(400, "Expected +5d or strict UTC YYYY-MM-DDTHH:MM:SSZ");
+					return;
+				}
+
+				if (!timeSource_ || !timeSource_(current)) {
+					sendError(503, "Synchronized time required for an absolute timeOffset");
+					return;
+				}
+
+				if ((current > 0 && target < INT64_MIN + current)
+					|| (current < 0 && target > INT64_MAX + current)) {
+					sendError(400, "Time offset exceeds signed 64-bit seconds");
+					return;
+				}
+
+				offset = target - current;
+			}
+
+			updates[key] = offset;
+		} else if (setting->type == MDS_ConfigType::Signed) {
+			int64_t value;
+			if (!parseSigned(text.c_str(), text.length(), value)) {
+				sendError(400, "Expected a signed decimal integer");
+				return;
+			}
+			updates[key] = value;
+		} else if (setting->type == MDS_ConfigType::Text) {
 			updates[key] = text;
 		} else if (setting->type == MDS_ConfigType::Boolean) {
 			if (text != "true" && text != "false") {
@@ -187,7 +308,7 @@ void ApplicationApi::configRequest() {
 		return;
 	}
 
-	if (!config_.save()) {
+	if (saveRequired && !config_.save()) {
 		// Keep the validated runtime edit and explicitly report persistence failure.
 		sendError(500, config_.lastError(), true);
 		return;

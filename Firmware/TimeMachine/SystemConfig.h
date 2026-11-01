@@ -21,6 +21,7 @@ namespace SystemConfig {
 		{"pwm",    Type::Unsigned, Access::ReadWrite, true, nullptr, DisplayGamma::DefaultMaximumPWM, 0, 255},
 		{"gcc",    Type::Unsigned, Access::ReadWrite, true, nullptr, 0x04, 0, 255},
 		{"timeZone",   Type::Text, Access::ReadWrite, true, MDS_Time::DefaultTimeZone, 0, 1, 128},
+		{"timeOffset", Type::Signed, Access::ReadWrite, false, nullptr, 0, 0, 0},
 		{"ntpServer1", Type::Text, Access::ReadWrite, true, MDS_Time::DefaultServer1,  0, 1,  64},
 		{"ntpServer2", Type::Text, Access::ReadWrite, true, MDS_Time::DefaultServer2,  0, 0,  64},
 		{"ntpInterval", Type::Unsigned, Access::ReadWrite, true, nullptr, MDS_Time::DefaultInterval, 60, 86400},
