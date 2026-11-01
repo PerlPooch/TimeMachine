@@ -13,8 +13,11 @@ namespace SystemConfig {
 	// Application definitions only; MDS_Config owns values, validation, and storage.
 	constexpr MDS_ConfigSetting Settings[] = {
 		{"schema", Type::Unsigned, Access::ReadOnly,  true, nullptr,        1, 1,  1, true},
+		{"version", Type::Text, Access::ReadOnly, false, "", 0, 0, 32},
 		{"name",   Type::Text,     Access::ReadWrite, true, "Time Machine", 0, 1, 32},
 		{"primary", Type::Boolean, Access::ReadWrite, true, nullptr, 0, 0, 1},
+		{"ipA", Type::Text, Access::ReadOnly, false, "", 0, 0, 15},
+		{"ipB", Type::Text, Access::ReadOnly, false, "", 0, 0, 15},
 		{"pwm",    Type::Unsigned, Access::ReadWrite, true, nullptr, DisplayGamma::DefaultMaximumPWM, 0, 255},
 		{"gcc",    Type::Unsigned, Access::ReadWrite, true, nullptr, 0x04, 0, 255},
 		{"timeZone",   Type::Text, Access::ReadWrite, true, MDS_Time::DefaultTimeZone, 0, 1, 128},

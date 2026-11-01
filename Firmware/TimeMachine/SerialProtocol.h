@@ -55,6 +55,46 @@ inline size_t encodeStatus(Status status, uint8_t* output, size_t capacity) {
 	return length > 0 ? encode(payload, static_cast<size_t>(length), output, capacity) : 0;
 }
 
+constexpr size_t IPBufferBytes = sizeof("{\"ip\":\"255.255.255.255\"}") + 2;
+
+// Accept IPv4 addresses or an empty disconnect notice, rejecting embedded NULs and zero addresses.
+inline bool validIPAddress(const char* address, size_t length) {
+	if (!address || length > 15) return false;
+	if (!length) return true;
+
+	unsigned octet = 0, digits = 0, groups = 0;
+	bool nonzero = false;
+
+	for (size_t index = 0; index < length; ++index) {
+		const char character = address[index];
+
+		if (character >= '0' && character <= '9') {
+			octet = octet * 10 + unsigned(character - '0');
+			if (++digits > 3 || octet > 255) return false;
+		} else if (character == '.' && digits && groups < 3) {
+			nonzero = nonzero || octet != 0;
+			++groups;
+			octet = digits = 0;
+		} else {
+			return false;
+		}
+	}
+
+	return groups == 3 && digits && (nonzero || octet != 0);
+}
+
+// Announce only the local address; port identity comes from the receiving physical link.
+inline size_t encodeIPAddress(const char* address, uint8_t* output, size_t capacity) {
+	if (!address) return 0;
+	const size_t size = strlen(address);
+	if (!validIPAddress(address, size)) return 0;
+
+	char payload[IPBufferBytes];
+	const int length = snprintf(payload, sizeof(payload), "{\"ip\":\"%s\"}", address);
+
+	return length > 0 ? encode(payload, static_cast<size_t>(length), output, capacity) : 0;
+}
+
 // Timestamped ping remains human-readable on the USB diagnostics console.
 constexpr size_t MaxPingPayloadBytes = 15; // "ping " + ten decimal digits.
 constexpr size_t PingBufferBytes = MaxPingPayloadBytes + 3;

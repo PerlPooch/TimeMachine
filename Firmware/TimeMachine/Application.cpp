@@ -102,9 +102,18 @@ void Application::transitionTo(State next) {
 	}
 }
 
-// Load settings and select display limits before matrix initialization.
-bool Application::beginConfig() {
+// Register the running firmware version, load settings, and select initial display limits.
+bool Application::beginConfig(const char* version) {
 	if (!config_.setSettings(SystemConfig::Settings)) {
+		Serial.println(config_.lastError());
+		return false;
+	}
+
+	// Use the sketch version for status; saved files must never select a firmware version.
+	JsonDocument status;
+	status["version"] = version;
+
+	if (!config_.setReadOnly("version", status["version"])) {
 		Serial.println(config_.lastError());
 		return false;
 	}
@@ -145,7 +154,7 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	oledReady_ = oledReady;
 	transitionTo(State::Starting);
 
-	if (!beginConfig()) {
+	if (!beginConfig(version)) {
 		transitionTo(State::ConfigFault);
 		return false;
 	}
@@ -267,13 +276,15 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			++first;
 		}
 
-		if (result == Result::Message && first < receiver.length() && receiver.payload()[first] == '{') {
-			JsonDocument payload;
+		JsonDocument payload;
+		const bool object = result == Result::Message && first < receiver.length()
+			&& receiver.payload()[first] == '{'
+			&& !deserializeJson(payload, receiver.payload(), receiver.length()) && payload.is<JsonObject>();
 
+		if (object) {
 			// Reserve status objects as responses, including unknown future status values.
 			// Recognizing JSON rather than literal bytes also accepts normal JSON whitespace.
-			if (!deserializeJson(payload, receiver.payload(), receiver.length())
-				&& payload.is<JsonObject>() && payload["status"].is<const char*>()) {
+			if (payload["status"].is<const char*>()) {
 				Serial.print("Serial ");
 				Serial.print(name);
 				Serial.print(" status: ");
@@ -291,6 +302,17 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			case Result::InvalidTerminator: response.status = Status::ErrorTerminator; break;
 			case Result::Timeout: response.status = Status::ErrorTimeout; break;
 			case Result::None: break;
+		}
+
+		if (object && !payload["ip"].isUnbound()) {
+			const JsonString address = payload["ip"].as<JsonString>();
+
+			// Framing is already acknowledged; malformed announcements cannot replace peer status.
+			if (payload.size() != 1 || !payload["ip"].is<const char*>()
+				|| !receiveIPAddress(address.c_str(), address.size(), index)) {
+				Serial.println("Serial: invalid IP announcement");
+			}
+			return;
 		}
 
 		if (result == Result::Message && SerialProtocol::isWiFiCredentials(receiver.payload(), receiver.length())) {
@@ -334,6 +356,58 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			break;
 		}
 		report(receiver.feed(static_cast<uint8_t>(byte), millis()));
+	}
+}
+
+// Record a direct peer address in runtime-only RO configuration and refresh its expiry timer.
+bool Application::receiveIPAddress(const char* address, size_t length, size_t index) {
+	if (!SerialProtocol::validIPAddress(address, length)) return false;
+
+	JsonDocument value;
+	value["ip"] = address;
+	if (!config_.setReadOnly(index == 0 ? "ipA" : "ipB", value["ip"])) return false;
+
+	peerIPAt_[index] = millis();
+	peerIPKnown_[index] = length != 0;
+	return true;
+}
+
+// Announce local IP changes on both links, refresh periodically, and expire silent peers.
+void Application::serviceIPAddresses(uint32_t now) {
+	String address = wifi_.ready() ? WiFi.localIP().toString() : String("");
+	if (!SerialProtocol::validIPAddress(address.c_str(), address.length())) address = "";
+
+	if (strcmp(localIPAddress_, address.c_str()) != 0) {
+		strlcpy(localIPAddress_, address.c_str(), sizeof(localIPAddress_));
+
+		for (size_t index = 0; index < 2; ++index) {
+			ipAnnouncementDue_[index] = true;
+			// Replace an unsent obsolete announcement, but finish any partial frame intact.
+			if (serialTransmit_[index].ipAddress && !serialTransmit_[index].sent) {
+				serialTransmit_[index] = SerialTransmit{};
+			}
+		}
+	}
+
+	for (size_t index = 0; index < 2; ++index) {
+		if (peerIPKnown_[index] && uint32_t(now - peerIPAt_[index]) >= PeerIPExpiryMs) {
+			receiveIPAddress("", 0, index);
+		}
+
+		auto& pending = serialTransmit_[index];
+		if (pending.length || (!ipAnnouncementDue_[index]
+			&& (!localIPAddress_[0] || uint32_t(now - lastIPAt_[index]) < IPAnnouncementIntervalMs))) {
+			continue;
+		}
+
+		pending.length = SerialProtocol::encodeIPAddress(localIPAddress_, pending.frame, sizeof(pending.frame));
+		pending.sent = 0;
+		pending.credentials = false;
+		pending.ipAddress = true;
+		if (pending.length) {
+			ipAnnouncementDue_[index] = false;
+			lastIPAt_[index] = now;
+		}
 	}
 }
 
@@ -390,6 +464,7 @@ void Application::queueWiFiCredentials(uint32_t now) {
 		pending.length = SerialProtocol::encodeWiFiCredentials(credentials, pending.frame, sizeof(pending.frame));
 		pending.sent = 0;
 		pending.credentials = pending.length != 0;
+		pending.ipAddress = false;
 	}
 }
 
@@ -408,12 +483,13 @@ bool Application::routeDisplayCommand(const Display::DisplayCommand& command) {
 			pending.length = SerialProtocol::encode(payload, length, pending.frame, sizeof(pending.frame));
 			pending.sent = 0;
 			pending.credentials = false;
+			pending.ipAddress = false;
 		}
 	}
 	return true;
 }
 
-// Both ports receive regardless of role. Primary boards transmit independently.
+// Service both ports independently; all boards announce IPs, and primaries add broadcasts.
 void Application::serviceSerial() {
 	if (config_.get("primary").as<bool>()) display_.resetMillisDelta();
 	receiveSerial(serialA_, receiverA_, 0, "A");
@@ -429,6 +505,7 @@ void Application::serviceSerial() {
 	if (primary) {
 		queueWiFiCredentials(now);
 	}
+	serviceIPAddresses(now);
 
 	HardwareSerial* ports[] = {&serialA_, &serialB_};
 	bool frameSent[2] = {};

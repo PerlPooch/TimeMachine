@@ -54,10 +54,12 @@ public:
 private:
 	void transitionTo(State next);
 	static const char* stateName(State state);
-	bool beginConfig();
+	bool beginConfig(const char* version);
 	bool beginMode();
 	void serviceHttp();
 	void serviceSerial();
+	void serviceIPAddresses(uint32_t now);
+	bool receiveIPAddress(const char* address, size_t length, size_t index);
 	void queueWiFiCredentials(uint32_t now);
 	void receiveWiFiCredentials(const uint8_t* payload, size_t length, const char* portName);
 	bool routeDisplayCommand(const Display::DisplayCommand& command);
@@ -86,6 +88,7 @@ private:
 		size_t length = 0;
 		size_t sent = 0;
 		bool credentials = false;
+		bool ipAddress = false;
 	};
 	SerialTransmit serialTransmit_[2];
 	struct SerialResponse {
@@ -101,6 +104,13 @@ private:
 	static constexpr uint32_t WiFiBroadcastIntervalMs = 10000;
 	uint32_t lastWiFiAt_[2] = {};
 	bool primaryActive_ = false;
+	static constexpr uint32_t IPAnnouncementIntervalMs = 10000;
+	static constexpr uint32_t PeerIPExpiryMs = 30000;
+	char localIPAddress_[16] = {};
+	bool ipAnnouncementDue_[2] = {};
+	uint32_t lastIPAt_[2] = {};
+	uint32_t peerIPAt_[2] = {};
+	bool peerIPKnown_[2] = {};
 
 	Display display_;
 	MDS_Config config_;

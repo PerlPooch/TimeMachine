@@ -1,4 +1,4 @@
-#define VERSION				"0.4.0"
+#define VERSION				"0.5.0"
 
 #include <Arduino.h>
 #include <Wire.h>
