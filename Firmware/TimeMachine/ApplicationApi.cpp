@@ -287,7 +287,10 @@ void ApplicationApi::configRequest() {
 		if (key == "timeOffset") {
 			int64_t offset;
 
-			if (text.length() && (text[0] == '+' || text[0] == '-')) {
+			// Bare zero clears the display offset without a unit or synchronized time.
+			if (text == "0") {
+				offset = 0;
+			} else if (text.length() && (text[0] == '+' || text[0] == '-')) {
 				if (!parseRelativeOffset(text, offset)) {
 					sendError(400, "Expected signed integer with s, m, h, or d; value must fit signed 64-bit seconds");
 					return;
@@ -295,7 +298,7 @@ void ApplicationApi::configRequest() {
 			} else {
 				int64_t target, current;
 				if (!parseUTCDateTime(text, target)) {
-					sendError(400, "Expected +5d or strict UTC YYYY-MM-DDTHH:MM:SSZ");
+					sendError(400, "Expected 0, +5d, or strict UTC YYYY-MM-DDTHH:MM:SSZ");
 					return;
 				}
 

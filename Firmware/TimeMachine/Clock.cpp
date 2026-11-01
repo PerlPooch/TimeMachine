@@ -1,15 +1,17 @@
 #include "Clock.h"
 #include <MDS_Display.h>
+#include <limits>
 
-// Borrow time, status output, and command submission without access to the renderer.
-Clock::Clock(MDS_Time& time, Display::CommandQueue& commands, MDS_Display& oled)
-	: time_(time), commands_(commands), oled_(oled) {}
+// Borrow time, configuration, status output, and command submission without access to the renderer.
+Clock::Clock(MDS_Time& time, MDS_Config& config, Display::CommandQueue& commands, MDS_Display& oled)
+	: time_(time), config_(config), commands_(commands), oled_(oled) {}
 
 // Enable clock publishing and submit the initial waiting-for-time state.
 bool Clock::begin() {
 	enabled_ = true;
 
 	timeConfiguration_ = time_.configurationVersion();
+	timeOffset_ = config_.get("timeOffset").as<int64_t>();
 
 	lastPublished_ = lastLoggedMinute_ = 0;
 	published_ = publishedValid_ = false;
@@ -48,13 +50,36 @@ bool Clock::publish(const struct tm* local) {
 void Clock::tick() {
 	if (!enabled_) return;
 
-	if (timeConfiguration_ != time_.configurationVersion()) {
+	const int64_t offset = config_.get("timeOffset").as<int64_t>();
+	if (timeConfiguration_ != time_.configurationVersion() || timeOffset_ != offset) {
 		timeConfiguration_ = time_.configurationVersion();
+		timeOffset_ = offset;
 		published_ = false;
 		lastLoggedMinute_ = 0;
 	}
 
-	if (!time_.valid()) {
+	const int64_t now = time_.utcNow();
+	struct tm local;
+	time_t shifted = 0;
+	bool valid = time_.valid();
+
+	// Add elapsed seconds to UTC before timezone conversion, guarding both arithmetic and calendar range.
+	if (valid) {
+		valid = !((offset > 0 && now > INT64_MAX - offset)
+			|| (offset < 0 && now < INT64_MIN - offset));
+		if (valid) {
+			const int64_t seconds = now + offset;
+			valid = seconds >= (std::numeric_limits<time_t>::min)()
+				&& seconds <= (std::numeric_limits<time_t>::max)();
+			if (valid) {
+				shifted = static_cast<time_t>(seconds);
+				valid = localtime_r(&shifted, &local) != nullptr
+					&& local.tm_year >= -1899 && local.tm_year <= 8099;
+			}
+		}
+	}
+
+	if (!valid) {
 		if ((!published_ || publishedValid_) && publish(nullptr)) {
 			published_ = true;
 			publishedValid_ = false;
@@ -63,20 +88,16 @@ void Clock::tick() {
 		return;
 	}
 
-	const time_t now = time_.utcNow();
-
-	if (published_ && publishedValid_ && now == lastPublished_) return;
-
-	struct tm local;
-	if (!time_.localTime(local) || !publish(&local)) return;
+	if (published_ && publishedValid_ && shifted == lastPublished_) return;
+	if (!publish(&local)) return;
 
 	published_ = publishedValid_ = true;
-	lastPublished_ = now;
+	lastPublished_ = shifted;
 
-	if (now / 60 != lastLoggedMinute_) {
+	if (shifted / 60 != lastLoggedMinute_) {
 		char message[48];
 		strftime(message, sizeof(message), "%b %d %Y %I:%M:%S %p %Z", &local);
 		Serial.println(message);
-		lastLoggedMinute_ = now / 60;
+		lastLoggedMinute_ = shifted / 60;
 	}
 }

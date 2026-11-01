@@ -15,7 +15,7 @@ Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, But
 	display_(matrix),
 	api_(http_, config_, matrix_, display_.commands(), &weather_),
 	timeController_(time_, config_, oled_), weatherController_(weather_, config_),
-	clock_(time_, display_.commands(), oled_), tests_(matrix_, display_, oled_) {}
+	clock_(time_, config_, display_.commands(), oled_), tests_(matrix_, display_, oled_) {}
 
 // Provide readable lifecycle names for transition reports.
 const char* Application::stateName(State state) {
