@@ -34,6 +34,7 @@ Sketch: "TimeMachine.ino — owns everything inside" {
     wc -> config
     wc -> weather
     clock -> time
+    clock -> config: "time offset"
     clock -> display.queue: "post"
     api -> display.queue: "post"
     display.queue -> display: "consume" {

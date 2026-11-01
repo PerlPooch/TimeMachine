@@ -18,6 +18,8 @@ runtime.setup -> app.begin: "begin(version, boardRole, true, true)"
 app.begin -> app.begin: "transitionTo(Starting)"
 app.begin -> config.registry: "setSettings(SystemConfig::Settings)"
 config.registry -> app.begin: "true" {style.stroke-dash: 4}
+app.begin -> config.version: "setReadOnly(version from sketch)"
+config.version -> app.begin: "version status registered" {style.stroke-dash: 4}
 app.begin -> config.mount: "setup()"
 config.mount -> app.begin: "filesystem ready" {style.stroke-dash: 4}
 app.begin -> config.load: "load() [saved file exists]"

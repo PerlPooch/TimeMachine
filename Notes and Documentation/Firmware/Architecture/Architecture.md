@@ -4,13 +4,13 @@
 
 The Time Machine firmware turns a clock display into a configurable timepiece and a remotely controlled display for text and animations. A board can operate on its own or work with connected boards so that one control point can direct several displays.
 
-Any board can connect safely to any other board through an A-to-B link. One board acts as the master, receiving display commands over HTTP and sending them through port A, port B, or both to directly connected boards. Every serial message travels exactly one hop and is never retransmitted. The master also shares timing and Wi-Fi settings to simplify setup and coordinate display behavior.
+Any board can connect safely to any other board through an A-to-B link. One board acts as the master, receiving display commands and configuration updates over HTTP and sending them through port A, port B, or both to directly connected boards. Every serial message travels exactly one hop and is never retransmitted. The master also shares timing and Wi-Fi settings to simplify setup and coordinate display behavior. Every board reports its IP to directly connected boards, making those neighbors accessible through the read-only `ipA` and `ipB` configuration values.
 
 The clock starts with the configured timezone, or the default when no timezone is saved. If OpenWeather is configured, a successful query then sets the timezone for the selected location.
 
 `Application` coordinates startup and ongoing work. Clock updates and remote display actions use a shared command queue, while `Display` handles rendering and animation. Configuration, networking, time, weather, and status output use external `MDS_*` libraries. This separates application behavior, display rendering, and reusable services.
 
-The following sections describe the components, object ownership, startup sequence, and communication interfaces that realize this design. The firmware entry point is `TimeMachine.ino`.
+The following sections describe the components, object ownership, startup sequence, and communication interfaces that realize this design. The firmware entry point is `TimeMachine.ino`. The current firmware version is `0.5.1`, reported through the read-only `version` field in `/api/config`.
 
 ## Classes and Relationships
 
@@ -21,10 +21,10 @@ See [Firmware Classes](Classes.md) for the intent, implementation approach, and 
 | Class | Role | Uses |
 | --- | --- | --- |
 | `Application` | Starts the firmware, runs services, routes serial messages, and handles the reset button | Hardware objects, application components, and external services |
-| `ApplicationApi` | Handles HTTP requests for settings, display actions, and weather; decodes serial display commands | HTTP, configuration, weather, matrix driver, display command queue, and `Application` for serial output |
+| `ApplicationApi` | Handles HTTP requests for settings, display actions, and weather; decodes serial display commands and configuration updates | HTTP, configuration, weather, matrix driver, display command queue, and `Application` for serial output |
 | `TimeController` | Applies time settings and updates the time service | Configuration, time service, and OLED |
 | `WeatherController` | Applies weather settings, updates the service, and applies timezone results | Configuration and weather service |
-| `Clock` | Converts the current time into display commands | Time service, display command queue, and OLED |
+| `Clock` | Converts offset time into display commands | Configuration, time service, display command queue, and OLED |
 | `Display` | Renders text, time, indicators, and animations | Display command queue and matrix driver |
 | `MatrixDriver` | Controls the LED driver and its brightness/current settings | I²C bus |
 | `Button` | Reads and debounces the physical button | GPIO and timing functions |
@@ -47,6 +47,8 @@ For an HTTP display request, `ApplicationApi` checks the request and sends the c
 
 For an incoming serial display command, `Application` receives the message and passes it to `ApplicationApi` for decoding. The decoded command goes to the local display queue.
 
+Configuration updates can target the local board, directly connected boards, or all three through HTTP destination selection. Received updates apply locally and are never forwarded. Offset inputs are converted to seconds on the HTTP board before delivery.
+
 Configuration connects several components. `ApplicationApi` handles changes to settings, while the time and weather controllers apply those settings to their services. Display brightness and current settings are applied to `MatrixDriver`.
 
 ### Supporting Definitions and Data Structures
@@ -60,6 +62,7 @@ Several supporting names are namespaces that group definitions and helper functi
 | `DisplayGamma` | Brightness conversion tables, constants, and helpers |
 | `SevenSegment` and `SixteenSegment` | Segment definitions, font tables, and character mapping helpers |
 | `ClockCalendar` | A date/time structure and calendar helpers |
+| `SerialProtocol` | Framing, protocol status definitions, and message encoders |
 
 Data structures describe values passed between components: `Display::Frame` holds display output, `Display::DisplayCommand` describes a requested action, `ClockCalendar::DateTime` holds calendar values, and `DisplayMap::Digit` describes the channel mapping for a digit.
 
@@ -81,7 +84,7 @@ In the diagram, boxes inside another box are owned by that enclosing object. The
 | `button` — `Button` | Sketch | `Application` |
 | `display_` — `Display` | `Application` | `Application` |
 | `commands_` — `Display::CommandQueue` | `Display` | `Clock`, `ApplicationApi`, `Display` |
-| `config_` — `MDS_Config` | `Application` | `Application`, `ApplicationApi`, `TimeController`, `WeatherController` |
+| `config_` — `MDS_Config` | `Application` | `Application`, `ApplicationApi`, `TimeController`, `WeatherController`, `Clock` |
 | `wifi_` — `MDS_WiFi` | `Application` | `Application` |
 | `http_` — `MDS_HTTP` | `Application` | `Application`, `ApplicationApi` |
 | `time_` — `MDS_Time` | `Application` | `Application`, `TimeController`, `Clock` |
@@ -146,14 +149,16 @@ The board provides a JSON API at `http://BOARD_IP` on port 80. All endpoints use
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/api/config` or `/` | Read or update saved settings |
+| `/api/config` or `/` | Read local settings and status, or update settings on selected local and serial destinations |
 | `/api/display` | Send display actions to this board or either serial port |
 | `/api/weather` | Read cached weather and retrieval status |
+
+The API also stores a runtime-only `timeOffset`. Signed unit input or a strict UTC date/time is converted to signed seconds. The clock adds this value to current UTC before local timezone conversion, so each board can show an independent time without changing system time.
 
 See the [API Summary](API-summary.md) for parameters, examples, and responses.
 
 ### Serial
 
-The A/B ports carry display commands, timing pings, and Wi-Fi credentials between boards, including while Wi-Fi is unavailable. A primary board supplies timing and network settings; both ports can receive display commands.
+The A/B ports carry display commands, configuration updates, timing pings, Wi-Fi credentials, and IP announcements between boards. Serial communication continues while Wi-Fi is unavailable. Each board reports its current IP on both ports; received addresses appear as read-only `ipA` and `ipB` values in the HTTP configuration response. The receiver returns a protocol status on the same port to report framing acceptance or failure; that status does not confirm execution. A primary board supplies timing and network settings; both ports can receive display commands and configuration updates.
 
 See the [Serial Summary](Serial-summary.md) for connections, board roles, and delivery behavior.

@@ -10,6 +10,8 @@ app.begin -> wifi.begin: "begin(RetrySavedNetworkAsync options)"
 wifi.begin -> app.begin: "started / waiting / retrying; no station connection required" {style.stroke-dash: 4}
 app.begin -> api.router: "setDisplayRouter(callback to Application)"
 api.router -> app.begin: "return" {style.stroke-dash: 4}
+app.begin -> api.timeSource: "setTimeSource(synchronized UTC callback)"
+api.timeSource -> app.begin: "return" {style.stroke-dash: 4}
 app.begin -> api.begin: "begin()"
 api.begin -> http.server: "server()"
 http.server -> api.begin: "server reference" {style.stroke-dash: 4}

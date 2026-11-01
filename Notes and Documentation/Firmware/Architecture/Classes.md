@@ -12,7 +12,7 @@ Coordinate the board as one system: start services in the right order, keep comm
 
 ### How It Works
 
-`Application` owns the services and controllers and holds references to the matrix, OLED, and button supplied by the sketch. An explicit state machine determines which work can run. `transitionTo()` records each change and performs the associated entry actions, such as starting the lamp animation or enabling the clock. Shared services continue during that animation, a reset-button hold, and a matrix display fault.
+`Application` owns the services and controllers and holds references to the matrix, OLED, and button supplied by the sketch. The sketch supplies the firmware version during initialization. `Application` publishes it through a read-only, nonpersistent configuration field, keeping HTTP status consistent with startup output. An explicit state machine determines which work can run. `transitionTo()` records each change and performs the associated entry actions, such as starting the lamp animation or enabling the clock. Shared services continue during that animation, a reset-button hold, and a matrix display fault.
 
 Callbacks connect external events to application behavior:
 
@@ -20,10 +20,14 @@ Callbacks connect external events to application behavior:
 - A time status callback writes to USB and the OLED. After synchronization, it also displays the network address when connected.
 - A weather status callback writes to USB and, after a successful query, asks `WeatherController` to replace the configured timezone with the returned offset.
 - A display-routing callback connects `ApplicationApi` to `routeDisplayCommand()`. It returns whether the selected serial destinations could accept the command.
+- A serial-payload callback connects configuration delivery to `routeSerialPayload()`, using the same port queues as display commands.
+- A synchronized UTC callback supplies real system time for absolute `timeOffset` inputs. It reports unavailable time until synchronization succeeds and never includes the stored offset.
 
 These callbacks capture `this` to reach the existing application instance. `Application` cannot be copied, keeping references and callbacks attached to the instance created by the sketch.
 
-Serial servicing is independent for A and B. Each port has a receiver, a pending transmit buffer, and transmission progress. Writes use available UART space, so a busy port does not stall the other port. A frame finishes before another message starts on that port. Routing checks every selected transmit buffer before changing any of them, so a busy destination rejects the request before another destination is queued. Received messages are never retransmitted.
+Serial servicing is independent for A and B. Each port has a receiver, a pending transmit buffer, and transmission progress. Writes use available UART space, so a busy port does not stall the other port. A frame finishes before another message starts on that port. Framing results select a `SerialProtocol::Status` response on the input port. Each port retains one pending response; further reception pauses until it is sent, while the other port continues independently. A response waits for an already-started frame and takes priority over the next outgoing frame. Received status objects are logged without acknowledgment to prevent response loops. Routing checks every selected transmit buffer before changing any of them, so a busy destination rejects the request before another destination is queued. Received messages are never retransmitted.
+
+Every board originates IP announcements on both ports, independently of the primary role. `serviceIPAddresses()` detects changes in the local address, queues periodic refreshes, and expires silent peers. `receiveIPAddress()` validates incoming announcements and uses the implementation-only configuration setter to update `ipA` or `ipB`. The setting definitions use `MDS_ConfigAccess::ReadOnly` and a false persistence flag; the existing configuration library and API enforce those rules. Unsent obsolete announcements are replaced when the local address changes; partially sent frames finish before the new address is announced.
 
 Credential messages are recognized before general payload logging, preventing credentials from appearing in USB output. Timing pings update display timing before logging can add delay. Receive work is bounded per port to leave time for other services.
 
@@ -36,8 +40,10 @@ A reset-button hold temporarily replaces the alpha digits with `RST`. Release re
 | `begin()` | Loads configuration, starts services, installs callbacks, and starts the lamp animation |
 | `tick()` | Advances the state machine, services communication, and updates controllers and display output |
 | `transitionTo()` | Centralizes lifecycle changes and their entry actions |
-| `routeDisplayCommand()` | Checks selected serial destinations and prepares outbound display frames |
-| `serviceSerial()` | Receives messages, drains outgoing frames, and originates master timing and credential messages |
+| `routeDisplayCommand()` | Encodes display commands and delegates serial delivery |
+| `routeSerialPayload()` | Checks every selected port, frames a prepared payload, and queues it for transmission |
+| `serviceSerial()` | Receives messages, drains outgoing frames, and originates IP, timing, and credential messages |
+| `serviceIPAddresses()` and `receiveIPAddress()` | Announce the local IP, record direct peer addresses, and clear stale peer status |
 | `serviceButton()` and `factoryReset()` | Handle cancelable reset requests, erase settings, and initiate reboot |
 
 ## ApplicationApi
@@ -52,9 +58,11 @@ The API holds references to existing services and the display queue. `begin()` r
 
 Display requests become `Display::DisplayCommand` values. Local commands enter the shared display queue. For serial destinations, the API invokes the routing callback supplied by `Application`, checks the returned acceptance result, and only then queues any local copy. The API handles request validation and command encoding; `Application` handles the physical ports.
 
+For `timeOffset`, bare `0` clears the offset; the API otherwise converts signed unit input to seconds or parses the single UTC date/time format and subtracts current UTC supplied by the time-source callback. Date validation rejects impossible dates rather than normalizing them. Gregorian date arithmetic avoids changing the system timezone, and integer bounds checks prevent overflow. The resulting value is stored through the normal signed setting type; `Clock` uses it for display output while system time remains unchanged.
+
 Serial display payloads carry no routing fields. `receiveDisplayCommand()` validates and decodes them, then adds them directly to the local queue without calling the routing callback. This implements the one-hop communication rule.
 
-Configuration requests collect changes before submitting them together for validation. Brightness and current changes are applied at runtime before settings are saved. If persistence fails, the response distinguishes settings already applied from settings successfully saved. Sensitive values are excluded from configuration responses. Display actions remain separate from saved settings.
+Configuration requests collect changes before submitting them together for validation. A temporary `MDS_Config` instance uses the same setting definitions to validate without changing live values before serial queue acceptance. The shared destination parser serves both display and configuration requests. Remote updates use a `config1` envelope containing normalized values; `receiveConfigCommand()` validates and applies them locally without invoking the routing callback. Offset conversion happens once on the HTTP board, so every destination receives the same seconds value. Configuration payloads are handled before general serial logging to keep sensitive settings out of USB output. Brightness and current changes are applied at runtime before persistent settings are saved. Requests containing only nonpersistent settings skip saving, using the persistence flags in the setting definitions. If persistence fails, the response distinguishes settings already applied from settings successfully saved. Sensitive values are excluded from configuration responses. Display actions remain separate from saved settings.
 
 Weather requests return cached data and status, so an HTTP request does not wait for a weather fetch. The weather endpoint is registered only when a weather service is supplied.
 
@@ -64,6 +72,9 @@ Weather requests return cached data and status, so an HTTP request does not wait
 | --- | --- |
 | `begin()` | Registers configuration, display, and optional weather handlers |
 | `setDisplayRouter()` | Supplies the callback used to request serial delivery |
+| `setSerialRouter()` | Supplies the callback for queueing prepared configuration payloads |
+| `receiveConfigCommand()` | Applies received configuration locally, enforcing validation and persistence flags |
+| `setTimeSource()` | Supplies synchronized UTC for absolute offset conversion |
 | `configRequest()` | Validates setting changes, applies display settings, saves configuration, and reports the result |
 | `displayRequest()` | Validates an action and sends it to the selected local and serial destinations |
 | `encodeDisplayCommand()` and `receiveDisplayCommand()` | Convert between structured commands and serial payloads |
@@ -153,13 +164,13 @@ Channel writes are divided into bounded I²C transfers. A write failure records 
 
 ### Intent
 
-Supply current local time to the display while keeping time acquisition and rendering independent.
+Supply local time, shifted by the configured offset, to the display while keeping time acquisition and rendering independent.
 
 ### How It Works
 
-`Clock` reads the external time service and publishes structured commands containing calendar values, AM/PM choices, and colon behavior. It holds a reference to the command queue and has no direct access to `Display` or `MatrixDriver`.
+`Clock` reads the external time service and the runtime-only `timeOffset` setting. It adds signed seconds to current UTC, then converts the result to the configured local timezone. This applies calendar and daylight-saving rules at the shifted instant without changing system time. It publishes structured commands containing calendar values, AM/PM choices, and colon behavior. It holds a reference to the command queue and has no direct access to `Display` or `MatrixDriver`.
 
-The initial command marks time as unavailable. Once valid time is available, updates are published when the time changes. A configuration-version check forces a fresh snapshot after time settings change, even if the UTC second has not changed. A rejected queue submission is retried on a later update pass. USB status output is limited to changes of minute.
+The initial command marks time as unavailable. Once valid time is available, updates are published when the time changes. A configuration-version check and offset comparison force a fresh snapshot after time settings or the offset change, even if the UTC second has not changed. Offset arithmetic and calendar-range checks prevent overflow; unavailable time or a shifted date outside years 0001–9999 produces the existing dashes pattern. Returning to a representable offset restores clock output. A rejected queue submission is retried on a later update pass. USB status output is limited to changes of minute.
 
 ### Key Methods
 
@@ -241,9 +252,9 @@ Assemble complete serial messages from arriving bytes while keeping incomplete o
 
 `Application` owns one receiver for each port. Each instance tracks the length byte, the exact number of payload bytes, and the final terminator. A newline inside a valid payload is treated as data because the payload length determines framing.
 
-The receiver returns a result rather than dispatching commands or invoking callbacks. `Application` decides whether a complete payload contains credentials, timing information, or a display action. This keeps framing independent of message meaning.
+The receiver returns a result rather than dispatching commands or invoking callbacks. `Application` decides whether a complete payload contains a protocol response, an IP announcement, credentials, timing information, or a display action. Framing acceptance produces `Status::Ok` even if application validation later rejects the payload; framing errors select the corresponding error status. This keeps framing independent of message meaning.
 
-Invalid lengths and terminators enter a discard state until a newline or idle timeout allows recovery. `expire()` also abandons incomplete messages after an idle timeout, even when no new byte arrives. Completed payload data remains available after parser reset so `Application` can read it immediately.
+Invalid lengths and terminators enter a discard state until a newline or idle timeout allows recovery. Expiration of that discard state does not produce another error for the same damaged frame. `expire()` also abandons incomplete messages after an idle timeout, even when no new byte arrives. Completed payload data remains available after parser reset so `Application` can read it immediately.
 
 ### Key Methods
 
