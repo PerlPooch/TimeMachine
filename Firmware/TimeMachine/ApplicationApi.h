@@ -17,10 +17,17 @@ public:
 	ApplicationApi& operator=(const ApplicationApi&) = delete;
 
 	using DisplayRouter = std::function<bool(const Display::DisplayCommand&)>;
+	using SerialRouter = std::function<bool(uint8_t, const char*, size_t)>;
 	using TimeSource = std::function<bool(int64_t&)>;
 
 	// Install the callback that asks Application to accept selected serial destinations.
 	void setDisplayRouter(DisplayRouter router) { displayRouter_ = std::move(router); }
+
+	// Queue prepared configuration payloads through the shared serial router.
+	void setSerialRouter(SerialRouter router) { serialRouter_ = std::move(router); }
+
+	// Apply received configuration locally, without routing it onward.
+	bool receiveConfigCommand(const uint8_t* payload, size_t length);
 
 	// Supply synchronized, unshifted UTC for converting absolute dates to stored offsets.
 	void setTimeSource(TimeSource source) { timeSource_ = std::move(source); }
@@ -36,6 +43,8 @@ private:
 	void on(const char* path, HTTPMethod method, MDS_HTTPServer::THandlerFunction handler);
 	bool syncDisplaySettings(bool applyCurrent = false);
 	void configRequest();
+	bool applyConfig(const JsonDocument& updates);
+	static bool addDestination(const String& value, uint8_t& destinations, bool& selected);
 	void displayRequest();
 	void weatherRequest();
 	void sendConfig();
@@ -52,6 +61,7 @@ private:
 	MDS_Weather* weather_;
 	DisplayRouter displayRouter_;
 	TimeSource timeSource_;
+	SerialRouter serialRouter_;
 	Display::CommandQueue& commands_;
 	bool registered_ = false;
 };

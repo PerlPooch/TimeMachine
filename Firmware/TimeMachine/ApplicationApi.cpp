@@ -196,6 +196,47 @@ void ApplicationApi::sendConfig() {
 	server().send(200, "application/json", body);
 }
 
+// Combine repeated destination selections; an explicit selection replaces the local default.
+bool ApplicationApi::addDestination(const String& value, uint8_t& destinations, bool& selected) {
+	uint8_t bits;
+	if (value == "all") bits = Display::Local | Display::PortA | Display::PortB;
+	else if (value == "local") bits = Display::Local;
+	else if (value == "a") bits = Display::PortA;
+	else if (value == "b") bits = Display::PortB;
+	else return false;
+
+	if (!selected) destinations = 0;
+	selected = true;
+	destinations |= bits;
+	return true;
+}
+
+// Apply an already normalized group locally, honoring access, validation, and persistence flags.
+bool ApplicationApi::applyConfig(const JsonDocument& updates) {
+	if (!config_.set(updates)) return false;
+	if (!syncDisplaySettings(!updates["gcc"].isUnbound())) return false;
+
+	bool saveRequired = false;
+	for (JsonPairConst item : updates.as<JsonObjectConst>()) {
+		const auto* setting = findSetting(item.key().c_str());
+		saveRequired = saveRequired || (setting && setting->persistent);
+	}
+	return !saveRequired || config_.save();
+}
+
+// Decode normalized configuration edits and execute locally; framing acknowledgment is separate.
+bool ApplicationApi::receiveConfigCommand(const uint8_t* payload, size_t length) {
+	JsonDocument document;
+	if (length > SerialProtocol::MaxPayloadBytes || deserializeJson(document, payload, length)
+		|| !document.is<JsonArray>() || document.size() != 2
+		|| !document[0].is<const char*>() || strcmp(document[0].as<const char*>(), "config1")
+		|| !document[1].is<JsonObject>() || !document[1].size()) return false;
+
+	JsonDocument updates;
+	updates.set(document[1]);
+	return !updates.overflowed() && applyConfig(updates);
+}
+
 // Validate grouped edits, apply display settings, and save only accepted changes.
 void ApplicationApi::configRequest() {
 	server().sendHeader("Cache-Control", "no-store");
@@ -212,10 +253,18 @@ void ApplicationApi::configRequest() {
 
 	JsonDocument updates;
 	updates.to<JsonObject>();
-	bool saveRequired = false;
+	uint8_t destinations = Display::Local;
+	bool selected = false;
 
 	for (int index = 0; index < server().args(); ++index) {
 		const String key = server().argName(index);
+		if (key == "to") {
+			if (!addDestination(server().arg(index), destinations, selected)) {
+				sendError(400, "Destination must be local, a, b, or all");
+				return;
+			}
+			continue;
+		}
 		const auto* setting = findSetting(key.c_str());
 
 		if (!setting) {
@@ -234,7 +283,6 @@ void ApplicationApi::configRequest() {
 		}
 
 		const String text = server().arg(index);
-		saveRequired = saveRequired || setting->persistent;
 
 		if (key == "timeOffset") {
 			int64_t offset;
@@ -298,18 +346,56 @@ void ApplicationApi::configRequest() {
 		return;
 	}
 
-	if (!config_.set(updates)) {
-		sendError(400, config_.lastError());
+	if (!updates.size()) {
+		sendError(400, "Provide at least one setting");
 		return;
 	}
 
+	// Validate with the same definitions without changing live settings before queue acceptance.
+	size_t count;
+	const auto* settings = config_.settings(count);
+	MDS_Config validation;
+	if (!validation.setSettings(settings, count) || !validation.set(updates)) {
+		sendError(400, validation.lastError());
+		return;
+	}
+
+	if (destinations & (Display::PortA | Display::PortB)) {
+		JsonDocument document;
+		auto envelope = document.to<JsonArray>();
+		envelope.add("config1");
+		envelope.add(updates.as<JsonObjectConst>());
+		char payload[SerialProtocol::MaxPayloadBytes + 1];
+		const size_t length = measureJson(document);
+		if (document.overflowed() || length > SerialProtocol::MaxPayloadBytes) {
+			sendError(413, "Configuration exceeds serial payload limit");
+			return;
+		}
+		serializeJson(document, payload, sizeof(payload));
+		if (!serialRouter_ || !serialRouter_(destinations, payload, length)) {
+			sendError(503, "Serial transmit queue busy or unavailable");
+			return;
+		}
+	}
+
+	if (!(destinations & Display::Local)) {
+		server().send(202, "application/json", "{\"accepted\":true}");
+		return;
+	}
+
+	if (!config_.set(updates)) {
+		sendError(500, config_.lastError());
+		return;
+	}
 	if (!syncDisplaySettings(!updates["gcc"].isUnbound())) {
 		sendError(500, "Cannot apply display settings", true);
 		return;
 	}
-
+	bool saveRequired = false;
+	for (JsonPairConst item : updates.as<JsonObjectConst>()) {
+		saveRequired = saveRequired || findSetting(item.key().c_str())->persistent;
+	}
 	if (saveRequired && !config_.save()) {
-		// Keep the validated runtime edit and explicitly report persistence failure.
 		sendError(500, config_.lastError(), true);
 		return;
 	}
@@ -335,21 +421,7 @@ void ApplicationApi::displayRequest() {
 		const String value = server().arg(index);
 
 		if (key == "to") {
-			if (!hasDestination) {
-				command.destinations = 0;
-				hasDestination = true;
-			}
-
-			// Expand all to the existing destinations; repeated selections still send once.
-			if (value == "all") {
-				command.destinations |= Display::Local | Display::PortA | Display::PortB;
-			} else if (value == "local") {
-				command.destinations |= Display::Local;
-			} else if (value == "a") {
-				command.destinations |= Display::PortA;
-			} else if (value == "b") {
-				command.destinations |= Display::PortB;
-			} else {
+			if (!addDestination(value, command.destinations, hasDestination)) {
 				sendError(400, "Destination must be local, a, b, or all");
 				return;
 			}

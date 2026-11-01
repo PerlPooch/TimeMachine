@@ -197,6 +197,9 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	Serial.println(wifi_.ready() ? "Startup: WiFi online" :
 		(wifiStarted ? "Startup: WiFi waiting for station/IP" : "Startup: WiFi retrying in loop"));
 
+	api_.setSerialRouter([this](uint8_t destinations, const char* payload, size_t length) {
+		return routeSerialPayload(destinations, payload, length);
+	});
 	api_.setDisplayRouter([this](const Display::DisplayCommand& command) { return routeDisplayCommand(command); });
 
 	// Absolute offset inputs use real UTC, independently of the stored display offset.
@@ -327,6 +330,18 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 		if (result == Result::Message && SerialProtocol::isWiFiCredentials(receiver.payload(), receiver.length())) {
 			receiveWiFiCredentials(receiver.payload(), receiver.length(), name);
 			return;
+		}
+
+		// Handle configuration before general logging so sensitive settings stay out of USB output.
+		if (result == Result::Message && first < receiver.length() && receiver.payload()[first] == '[') {
+			JsonDocument envelope;
+			if (!deserializeJson(envelope, receiver.payload(), receiver.length())
+				&& envelope[0].is<const char*>() && strcmp(envelope[0].as<const char*>(), "config1") == 0) {
+				if (!api_.receiveConfigCommand(receiver.payload(), receiver.length())) {
+					Serial.println("Serial: configuration update failed");
+				}
+				return;
+			}
 		}
 
 		uint32_t primaryMillis = 0;
