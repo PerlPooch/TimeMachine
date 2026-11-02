@@ -638,19 +638,21 @@ void Application::factoryReset() {
 	}
 
 	http_.stop();
-	LittleFS.end();
 
-	if (!LittleFS.format()) {
-		// Remount so services can resume when the button is released.
-		config_.setup();
-		Serial.println("Reset: filesystem erase failed");
-		transitionTo(State::ResetFailed);
-		return;
+	// Remove only configuration files; preserve website content and other files.
+	// Clear an unfinished save first, then the active configuration.
+	const String configFiles[] = {String(ConfigPath) + ".tmp", ConfigPath};
+
+	for (const auto& path : configFiles) {
+		if (LittleFS.exists(path) && !LittleFS.remove(path)) {
+			Serial.print("Reset: cannot remove ");
+			Serial.println(path);
+			transitionTo(State::ResetFailed);
+			return;
+		}
 	}
 
 	if (!wifi_.eraseCredentials()) {
-		// The filesystem was erased; remount it before waiting for release.
-		config_.setup();
 		Serial.println("Reset: Wi-Fi erase failed");
 		transitionTo(State::ResetFailed);
 		return;

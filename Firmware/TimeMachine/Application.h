@@ -131,7 +131,8 @@ private:
 	bool peerIPKnown_[2] = {};
 
 	Display display_;
-	MDS_Config config_;
+	static constexpr const char* ConfigPath = "/config.json";
+	MDS_Config config_{ConfigPath};
 	MDS_WiFi wifi_;
 	MDS_HTTP http_;
 	MDS_Time time_;
