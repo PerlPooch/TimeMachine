@@ -55,8 +55,8 @@ bool Display::begin() {
 		}
 	}
 
-	for (uint8_t address : DisplayMap::Discretes) {
-		channels[count++] = address;
+	for (const auto& discrete : DisplayMap::DiscreteMap) {
+		channels[count++] = discrete.address;
 	}
 
 	initialized_ = matrix_.begin(channels, count);
@@ -93,7 +93,7 @@ void Display::drawText(Frame& frame, const char* text, uint8_t brightness) const
 
 // Set one discrete indicator in the frame without writing hardware.
 void Display::setIndicator(Frame& frame, Indicator indicator, uint8_t brightness) const {
-	frame.channels[static_cast<uint8_t>(indicator)] = brightness;
+	frame.channels[DisplayMap::discreteAddress(indicator)] = brightness;
 }
 
 // Read the driver cache so snapshots include raw diagnostic output.
@@ -146,8 +146,8 @@ bool Display::flush() {
 				output_.channels[digit.firstAddress + segment] = 255;
 			}
 		}
-		for (uint8_t address : DisplayMap::Discretes) {
-			output_.channels[address] = 255;
+		for (const auto& discrete : DisplayMap::DiscreteMap) {
+			output_.channels[discrete.address] = 255;
 		}
 	}
 
@@ -308,8 +308,9 @@ bool Display::setColonsBlink(bool enabled) {
 // Apply the shared one-second on/off phase to both colon indicators.
 bool Display::drawColons() {
 	const uint8_t brightness = (animationMillis() / 1000u) % 2u == 0 ? 92 : 0;
-	const bool changed = target_.channels[DisplayMap::Colon1] != brightness
-		|| target_.channels[DisplayMap::Colon2] != brightness;
+
+	const bool changed = target_.channels[DisplayMap::discreteAddress(Indicator::Colon1)] != brightness
+		|| target_.channels[DisplayMap::discreteAddress(Indicator::Colon2)] != brightness;
 
 	setIndicator(target_, Indicator::Colon1, brightness);
 	setIndicator(target_, Indicator::Colon2, brightness);

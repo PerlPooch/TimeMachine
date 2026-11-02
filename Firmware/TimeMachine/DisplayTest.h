@@ -26,7 +26,7 @@ enum class DisplayTest {
 };
 
 #ifndef DISPLAY_TEST_MODE
-#define DISPLAY_TEST_MODE DisplayTest::StartupShow
+#define DISPLAY_TEST_MODE DisplayTest::SegmentWalk
 #endif
 
 constexpr DisplayTest ACTIVE_TEST = DISPLAY_TEST_MODE;

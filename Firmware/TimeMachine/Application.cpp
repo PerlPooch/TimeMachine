@@ -725,12 +725,14 @@ void Application::tick() {
 	}
 
 	// Shared services keep running during startup, reset holds, and display faults.
-	serviceHttp();
-	http_.tick();
-	serviceSerial();
-	timeController_.tick(wifi_.ready());
-	weatherController_.tick(wifi_.ready(), time_.valid());
-
+	if (mode_ == Mode::Clock) {
+		serviceHttp();
+		http_.tick();
+		serviceSerial();
+		timeController_.tick(wifi_.ready());
+		weatherController_.tick(wifi_.ready(), time_.valid());
+	}
+	
 	// Startup completion enables the mode; an animation failure disables rendering.
 	switch (state_) {
 		case State::SegmentTest:

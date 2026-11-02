@@ -17,6 +17,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <array>
+#include <stddef.h>
 
 namespace DisplayMap {
 	struct Digit {
@@ -41,19 +43,76 @@ namespace DisplayMap {
 		{0x47, 7}
 	};
 
-	// D1/D2 are AM/PM; D3/D4 form the hours:minutes colon.
-	constexpr uint8_t AM =		0x0E;
-	constexpr uint8_t PM =		0x0F;
-	constexpr uint8_t Colon1 =	0x1E;
-	constexpr uint8_t Colon2 =	0x1F;
+	constexpr uint8_t DigitCount = sizeof(Digits) / sizeof(Digits[0]);
 
-	constexpr uint8_t Discretes[] = {
+	// One digit segment; digit and segment indices are zero-based.
+	struct SegmentMapEntry {
+		uint8_t address;
+		uint8_t digitIndex;
+		uint8_t segmentIndex;
+	};
+
+	// Count digit segments, excluding the separate indicator LEDs.
+	constexpr size_t countSegments() {
+		size_t count = 0;
+
+		for (const auto& digit : Digits) {
+			count += digit.segmentCount;
+		}
+
+		return count;
+	}
+
+	// Expand each digit's consecutive addresses into a flat map at compile time.
+	constexpr auto makeSegmentMap() {
+		std::array<SegmentMapEntry, countSegments()> map{};
+		size_t entry = 0;
+
+		for (uint8_t digitIndex = 0; digitIndex < DigitCount; ++digitIndex) {
+			const auto& digit = Digits[digitIndex];
+
+			for (uint8_t segmentIndex = 0; segmentIndex < digit.segmentCount; ++segmentIndex) {
+				map[entry++] = {
+					uint8_t(digit.firstAddress + segmentIndex),
+					digitIndex,
+					segmentIndex
+				};
+			}
+		}
+
+		return map;
+	}
+
+	// Digit segments in left-to-right display order.
+	inline constexpr auto SegmentMap = makeSegmentMap();
+
+	// Map indices are distinct from LED-driver addresses.
+	enum class DiscreteIndex : uint8_t {
 		AM,
 		PM,
 		Colon1,
-		Colon2
+		Colon2,
+		Count
 	};
 
-	constexpr uint8_t DigitCount = sizeof(Digits) / sizeof(Digits[0]);
+	// Keep each indicator's address beside its diagnostic label.
+	struct DiscreteMapEntry {
+		uint8_t address;
+		const char* name;
+	};
+
+	// Entries follow DiscreteIndex order: AM, PM, then the two colon LEDs.
+	inline constexpr std::array<DiscreteMapEntry, size_t(DiscreteIndex::Count)> DiscreteMap = {{
+		{0x0E, "AM"},
+		{0x0F, "PM"},
+		{0x1E, "Colon1"},
+		{0x1F, "Colon2"}
+	}};
+
+	// Resolve a named indicator to its driver address.
+	constexpr uint8_t discreteAddress(DiscreteIndex index) {
+		return DiscreteMap[static_cast<size_t>(index)].address;
+	}
+
 	constexpr uint8_t ChannelSpan = 0x80;
 }

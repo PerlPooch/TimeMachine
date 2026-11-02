@@ -34,7 +34,7 @@ namespace Board {
 MDS_Display oled(Wire, 0x3C, 2, 100000);
 MatrixDriver matrix(Wire, Board::DISPLAY_ENABLE);
 Button button(Board::BUTTON_PIN);
-Application application(Application::Mode::Clock, matrix, oled, button);
+Application application(Application::Mode::Tests, matrix, oled, button);	// Set Test Mode Here
 
 // Own board setup and pass initialized hardware to the application.
 void setup() {

@@ -84,12 +84,8 @@ public:
 	// Expose command submission without giving producers control of rendering.
 	CommandQueue& commands() { return commands_; }
 
-	enum class Indicator : uint8_t {
-		AM = DisplayMap::AM,
-		PM = DisplayMap::PM,
-		Colon1 = DisplayMap::Colon1,
-		Colon2 = DisplayMap::Colon2
-	};
+	// Use the map's indicator names without exposing driver addresses.
+	using Indicator = DisplayMap::DiscreteIndex;
 
 	// Bind the channel driver; display initialization remains explicit.
 	explicit Display(MatrixDriver& matrix) : matrix_(matrix) {}

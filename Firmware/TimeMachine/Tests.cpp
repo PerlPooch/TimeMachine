@@ -35,8 +35,9 @@ namespace {
 	constexpr uint32_t ALL_ON_HOLD_MS =		10000;
 	constexpr uint32_t FRAME_MS =			20;
 	constexpr uint32_t COUNT_MS =			80;
-	constexpr uint32_t WALK_MS =			50;
-	constexpr uint8_t WALK_STEPS =		123;  // 118 segments, 4 discretes, then blank.
+	constexpr uint32_t WALK_MS =			150;
+	constexpr uint32_t WALK_STEPS = DisplayMap::SegmentMap.size()
+		+ DisplayMap::DiscreteMap.size() + 1;
 }
 
 using DisplayMap::Digits;
@@ -127,8 +128,8 @@ bool Tests::showAllSegments(uint8_t brightness) {
 		}
 	}
 
-	for (uint8_t address : DisplayMap::Discretes) {
-		frame[address] = brightness;
+	for (const auto& discrete : DisplayMap::DiscreteMap) {
+		frame[discrete.address] = brightness;
 	}
 
 	return matrix_.writeBrightness(0, frame, sizeof(frame));
@@ -269,35 +270,32 @@ bool Tests::showCharacters(uint32_t step) {
 // Walk digit segments, AM, PM, and both colon LEDs, then show one blank step.
 bool Tests::showWalk(uint32_t step) {
 	uint8_t frame[DisplayMap::ChannelSpan] = {};
-	uint8_t offset = 0;
 
-	for (uint8_t index = 0; index < DisplayMap::DigitCount; ++index) {
-		if (step >= offset && step < offset + Digits[index].segmentCount) {
-			const uint8_t segment = step - offset;
-			const uint8_t address = Digits[index].firstAddress + segment;
-			frame[address] = TEST_BRIGHTNESS;
-			char message[40];
-			snprintf(message, sizeof(message), "DS%u segment %u 0x%02X", index + 1, segment + 1, address);
-			Serial.println(message);
-			oled_.D(message);
-			return matrix_.writeBrightness(0, frame, sizeof(frame));
-		}
+	if (step < DisplayMap::SegmentMap.size()) {
+		const auto& segment = DisplayMap::SegmentMap[step];
 
-		offset += Digits[index].segmentCount;
-	}
+		frame[segment.address] = TEST_BRIGHTNESS;
 
-	constexpr const char* names[] = {"AM", "PM", "Colon1", "Colon2"};
+		// Diagnostic labels count from one; map indices count from zero.
+		char message[40];
 
-	for (uint8_t index = 0; index < sizeof(DisplayMap::Discretes); ++index) {
-		if (step == offset + index) {
-			const uint8_t address = DisplayMap::Discretes[index];
-			frame[address] = TEST_BRIGHTNESS;
-			char message[40];
-			snprintf(message, sizeof(message), "%s 0x%02X", names[index], address);
-			Serial.println(message);
-			oled_.D(message);
-			break;
-		}
+		snprintf(message, sizeof(message), "DS%u segment %u 0x%02X",
+			segment.digitIndex + 1, segment.segmentIndex + 1, segment.address);
+
+		Serial.println(message);
+		oled_.D(message);
+	} else if (step < WALK_STEPS - 1) {
+		const size_t index = step - DisplayMap::SegmentMap.size();
+		const auto& discrete = DisplayMap::DiscreteMap[index];
+
+		frame[discrete.address] = TEST_BRIGHTNESS;
+
+		char message[40];
+
+		snprintf(message, sizeof(message), "%s 0x%02X", discrete.name, discrete.address);
+
+		Serial.println(message);
+		oled_.D(message);
 	}
 
 	return matrix_.writeBrightness(0, frame, sizeof(frame));
