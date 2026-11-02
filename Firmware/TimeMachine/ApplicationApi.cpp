@@ -17,6 +17,7 @@
 #include "ApplicationApi.h"
 #include "SerialProtocol.h"
 #include "ClockCalendar.h"
+#include <LittleFS.h>
 #include <string.h>
 #include <utility>
 
@@ -45,12 +46,15 @@ bool ApplicationApi::syncDisplaySettings(bool applyCurrent) {
 // Register long-lived handlers once; callbacks return to this API instance.
 void ApplicationApi::begin() {
 	if (!registered_) {
-		on("/",				HTTP_GET, [this]() { configRequest(); });
 		on("/api/config",	HTTP_GET, [this]() { configRequest(); });
 		on("/api/display",	HTTP_GET, [this]() { displayRequest(); });
 		if (weather_) {
 			on("/api/weather", HTTP_GET, [this]() { weatherRequest(); });
 		}
+
+		// Register specific routes before the website's catch-all path.
+		server().serveStatic("/assets/", LittleFS, "/www/assets/");
+		server().serveStatic("/", LittleFS, "/www/");
 
 		registered_ = true;
 	}

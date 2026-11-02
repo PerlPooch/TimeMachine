@@ -50,7 +50,7 @@ public:
 	static size_t encodeDisplayCommand(const Display::DisplayCommand& command, char* output, size_t capacity);
 	bool receiveDisplayCommand(const uint8_t* payload, size_t length);
 
-	// Register config, display-action, and optional weather routes once.
+	// Register API routes and the LittleFS website once.
 	void begin();
 
 private:

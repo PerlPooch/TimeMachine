@@ -44,6 +44,9 @@ void setup() {
 	pinMode(Board::MASTER_JUMPER, INPUT_PULLUP);
 	Serial.begin(115200);
 
+	// Keep USB logging from delaying the display when no monitor is reading.
+	Serial.setTxTimeoutMs(0);
+
 	// Allow USB CDC to attach without requiring a connected serial monitor.
 	const uint32_t serialStarted = millis();
 
