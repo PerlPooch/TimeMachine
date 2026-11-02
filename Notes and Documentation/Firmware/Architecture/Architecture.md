@@ -149,7 +149,9 @@ The board provides a JSON API at `http://BOARD_IP` on port 80. All endpoints use
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/api/config` or `/` | Read local settings and status, or update settings on selected local and serial destinations |
+| `/` | Serve static files from LittleFS `/www/`; directory index is `index.htm`. |
+| `/assets/` | Serve static files from LittleFS `/www/assets/`. |
+| `/api/config` | Read local settings and status, or update settings on selected local and serial destinations |
 | `/api/display` | Send display actions to this board or either serial port |
 | `/api/weather` | Read cached weather and retrieval status |
 

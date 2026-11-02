@@ -6,7 +6,9 @@ Base URL: `http://BOARD_IP` (port 80). All endpoints use **GET** and return JSON
 
 | Path | Purpose |
 | --- | --- |
-| `/api/config` or `/` | Read configuration and status; query parameters update settings. |
+| `/` | Serve static files from LittleFS `/www/`; directory index is `index.htm`. |
+| `/assets/` | Serve static files from LittleFS `/www/assets/`. |
+| `/api/config` | Read configuration and status; query parameters update settings. |
 | `/api/display` | Queue a local and/or remote display command; never saves settings. |
 | `/api/weather` | Read cached weather and fetch status. |
 
