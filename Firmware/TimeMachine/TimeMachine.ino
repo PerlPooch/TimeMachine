@@ -51,17 +51,15 @@ void setup() {
 		delay(10);
 	}
 
-	const char* boardRole = digitalRead(Board::MASTER_JUMPER) == LOW ? "Primary" : "Secondary";
+	const bool defaultPrimary = digitalRead(Board::MASTER_JUMPER) == LOW;
 	Serial.println();
 	Serial.println("Time Machine, V " VERSION);
-	Serial.print("Board: Rev A / ");
-	Serial.println(boardRole);
 	button.begin();
 //	Serial.println(button.pressed() ? "Button: pressed" : "Button: released");
 
 	const bool busReady = Wire.begin(Board::SDA_PIN, Board::SCL_PIN, 100000);
 	const bool oledReady = busReady && oled.setup();
-	application.begin(VERSION, boardRole, busReady, oledReady);
+	application.begin(VERSION, defaultPrimary, busReady, oledReady);
 }
 
 // Advance application work and yield briefly between service passes.

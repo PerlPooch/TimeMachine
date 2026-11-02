@@ -119,7 +119,7 @@ void Application::transitionTo(State next) {
 }
 
 // Register the running firmware version, load settings, and select initial display limits.
-bool Application::beginConfig(const char* version) {
+bool Application::beginConfig(const char* version, bool defaultPrimary) {
 	if (!config_.setSettings(SystemConfig::Settings)) {
 		Serial.println(config_.lastError());
 		return false;
@@ -128,8 +128,11 @@ bool Application::beginConfig(const char* version) {
 	// Use the sketch version for status; saved files must never select a firmware version.
 	JsonDocument status;
 	status["version"] = version;
+	status["primary"] = defaultPrimary;
 
-	if (!config_.setReadOnly("version", status["version"])) {
+	// Seed the role from the jumper before loading any saved primary value.
+	if (!config_.setReadOnly("version", status["version"])
+		|| !config_.set("primary", status["primary"])) {
 		Serial.println(config_.lastError());
 		return false;
 	}
@@ -158,7 +161,7 @@ bool Application::beginConfig(const char* version) {
 }
 
 // Start shared services and the lamp animation using reported hardware readiness.
-bool Application::begin(const char* version, const char* boardRole, bool busReady, bool oledReady) {
+bool Application::begin(const char* version, bool defaultPrimary, bool busReady, bool oledReady) {
 	// Guard against calls to begin() except from Uninitialized or ConfigFault
 	if (state_ != State::Uninitialized && state_ != State::ConfigFault) {
 		// A paused running mode still counts as initialized.
@@ -170,7 +173,7 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	oledReady_ = oledReady;
 	transitionTo(State::Starting);
 
-	if (!beginConfig(version)) {
+	if (!beginConfig(version, defaultPrimary)) {
 		transitionTo(State::ConfigFault);
 		return false;
 	}
@@ -178,6 +181,9 @@ bool Application::begin(const char* version, const char* boardRole, bool busRead
 	serialA_.begin(115200, SERIAL_8N1, 0, 1);
 	serialB_.begin(115200, SERIAL_8N1, 20, 18);
 	config_.dump();
+	const char* boardRole = config_.get("primary").as<bool>() ? "Primary" : "Secondary";
+	Serial.print("Board: Rev A / ");
+	Serial.println(boardRole);
 	Serial.println(mode_ == Mode::Clock ? "Application: Clock" : "Application: Tests");
 
 	if (mode_ == Mode::Tests) {

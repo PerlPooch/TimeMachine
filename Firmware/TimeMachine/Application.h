@@ -60,8 +60,9 @@ public:
 	Application& operator=(const Application&) = delete;
 
 	// Hardware readiness comes from the harness; services can run without a display.
+	// The jumper supplies defaultPrimary; saved configuration overrides that default.
 	// Success starts the asynchronous lamp test; the selected mode begins afterward.
-	bool begin(const char* version, const char* boardRole, bool busReady, bool oledReady);
+	bool begin(const char* version, bool defaultPrimary, bool busReady, bool oledReady);
 	void tick();
 
 	// Report the current lifecycle state without advancing application work.
@@ -70,7 +71,7 @@ public:
 private:
 	void transitionTo(State next);
 	static const char* stateName(State state);
-	bool beginConfig(const char* version);
+	bool beginConfig(const char* version, bool defaultPrimary);
 	bool beginMode();
 	void serviceHttp();
 	void serviceSerial();
