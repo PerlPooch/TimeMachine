@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+# ===========================================================================
+# File:      tools/lfs-download
+# Firmware:  0.5.1
+# Git base:  dafb18db29e0
+#
+# Copyright (c) 2026 Marc D. Spencer.
+# All Rights Reserved under the applicable license.
+# SPDX-License-Identifier: MPL-2.0
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# ===========================================================================
+
+"""Fetch and unpack the Time Machine LittleFS partition."""
+
+from lfs_common import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main("download"))
