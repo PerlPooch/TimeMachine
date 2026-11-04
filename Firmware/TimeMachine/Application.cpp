@@ -22,6 +22,20 @@
 #include <esp_wifi.h>
 #include "SerialProtocol.h"
 
+#ifdef DEBUG_SERIAL_FRAMES
+static void logSerialFrame(const char* port, const char* direction, const uint8_t* payload, size_t length) {
+	Serial.print("Serial ");
+	Serial.print(port);
+	Serial.print(direction);
+	Serial.write(payload, length);
+	Serial.println();
+}
+
+static void logSerialTransmit(size_t index, const uint8_t* frame, size_t length) {
+	logSerialFrame(index == 0 ? "A" : "B", " TX: ", frame + 1, length - 2);
+}
+#endif
+
 // Wire owned services to the hardware and command queue supplied at construction.
 Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, Button& button):
 	mode_(mode),
@@ -289,7 +303,7 @@ void Application::serviceHttp() {
 	}
 }
 
-// Dispatch sensitive frames before logging other length-delimited payloads.
+// Receive length-delimited frames and dispatch them by payload type.
 void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& receiver, size_t index, const char* name) {
 	using Result = SerialProtocol::Receiver::Result;
 	using Status = SerialProtocol::Status;
@@ -303,6 +317,19 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			return;
 		}
 
+		uint32_t primaryMillis = 0;
+		const bool timestampedPing = result == Result::Message
+			&& SerialProtocol::decodePing(receiver.payload(), receiver.length(), primaryMillis);
+		// Capture the offset before USB diagnostic output can delay this service pass.
+		if (timestampedPing && !config_.get("primary").as<bool>()) {
+			display_.synchronizeMillis(primaryMillis);
+		}
+#ifdef DEBUG_SERIAL_FRAMES
+		if (result == Result::Message) {
+			logSerialFrame(name, " RX: ", receiver.payload(), receiver.length());
+		}
+#endif
+
 		size_t first = 0;
 		while (result == Result::Message && first < receiver.length()
 			&& (receiver.payload()[first] == ' ' || receiver.payload()[first] == '\t'
@@ -315,16 +342,10 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			&& receiver.payload()[first] == '{'
 			&& !deserializeJson(payload, receiver.payload(), receiver.length()) && payload.is<JsonObject>();
 
-		if (object) {
-			// Reserve status objects as responses, including unknown future status values.
-			// Recognizing JSON rather than literal bytes also accepts normal JSON whitespace.
-			if (payload["status"].is<const char*>()) {
-				Serial.print("Serial ");
-				Serial.print(name);
-				Serial.print(" status: ");
-				Serial.println(payload["status"].as<const char*>());
-				return;
-			}
+		// Reserve status objects as responses, including unknown future status values.
+		// Recognizing JSON rather than literal bytes also accepts normal JSON whitespace.
+		if (object && payload["status"].is<const char*>()) {
+			return;
 		}
 
 		// Receipt acknowledgment is determined by framing, before application validation.
@@ -354,7 +375,7 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			return;
 		}
 
-		// Handle configuration before general logging so sensitive settings stay out of USB output.
+		// Handle configuration separately from display commands.
 		if (result == Result::Message && first < receiver.length() && receiver.payload()[first] == '[') {
 			JsonDocument envelope;
 			if (!deserializeJson(envelope, receiver.payload(), receiver.length())
@@ -366,19 +387,7 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 			}
 		}
 
-		uint32_t primaryMillis = 0;
-		const bool timestampedPing = result == Result::Message
-			&& SerialProtocol::decodePing(receiver.payload(), receiver.length(), primaryMillis);
-		// Capture the offset before USB diagnostic output can delay this service pass.
-		if (timestampedPing && !config_.get("primary").as<bool>()) {
-			display_.synchronizeMillis(primaryMillis);
-		}
-		Serial.print("Serial ");
-		Serial.print(name);
 		if (result == Result::Message) {
-			Serial.print(" RX: ");
-			Serial.write(receiver.payload(), receiver.length());
-			Serial.println();
 			if (!timestampedPing && receiver.length() >= 5 && memcmp(receiver.payload(), "ping ", 5) == 0) {
 				Serial.print("Serial "); Serial.print(name); Serial.println(" error: invalid ping timestamp");
 			}
@@ -387,6 +396,8 @@ void Application::receiveSerial(HardwareSerial& port, SerialProtocol::Receiver& 
 				Serial.print("Serial "); Serial.print(name); Serial.println(" error: invalid display command");
 			}
 		} else {
+			Serial.print("Serial ");
+			Serial.print(name);
 			Serial.print(" error: ");
 			Serial.println(result == Result::InvalidLength ? "invalid length" :
 				result == Result::InvalidTerminator ? "expected newline terminator" : "frame timeout");
@@ -587,7 +598,12 @@ void Application::serviceSerial() {
 			const size_t count = remaining < static_cast<size_t>(room) ? remaining : static_cast<size_t>(room);
 			response.sent += ports[index]->write(frame + response.sent, count);
 
-			if (response.sent == length) response = SerialResponse{};
+			if (response.sent == length) {
+#ifdef DEBUG_SERIAL_FRAMES
+				logSerialTransmit(index, frame, length);
+#endif
+				response = SerialResponse{};
+			}
 			continue;
 		}
 
@@ -598,7 +614,12 @@ void Application::serviceSerial() {
 		const size_t remaining = pending.length - pending.sent;
 		const size_t count = remaining < static_cast<size_t>(room) ? remaining : static_cast<size_t>(room);
 		pending.sent += ports[index]->write(pending.frame + pending.sent, count);
-		if (pending.sent == pending.length) pending = SerialTransmit{};
+		if (pending.sent == pending.length) {
+#ifdef DEBUG_SERIAL_FRAMES
+			logSerialTransmit(index, pending.frame, pending.length);
+#endif
+			pending = SerialTransmit{};
+		}
 	}
 	if (!primary) {
 		primaryActive_ = false;
@@ -611,6 +632,9 @@ void Application::serviceSerial() {
 			&& ports[index]->availableForWrite() >= static_cast<int>(length)
 			&& ports[index]->write(frame, length) == length) {
 			lastPingAt_[index] = now;
+#ifdef DEBUG_SERIAL_FRAMES
+			logSerialTransmit(index, frame, length);
+#endif
 		}
 	}
 }

@@ -16,6 +16,10 @@
 
 #pragma once
 
+// Uncomment or pass -DDEBUG_SERIAL_FRAMES to trace A/B frames on USB Serial.
+// The trace includes raw Wi-Fi credentials and configuration payloads.
+// #define DEBUG_SERIAL_FRAMES
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
