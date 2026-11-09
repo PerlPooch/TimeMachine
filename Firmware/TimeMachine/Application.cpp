@@ -219,7 +219,13 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 	}
 
 	wifi_.setStatusCallback([this](const String& message) {
-		if (oledReady_) {
+		// Log all messages; reserve the OLED for concise connection and portal status.
+		Serial.println(message);
+
+		const bool concise = strncmp(message.c_str(), "WiFi", 4) != 0
+			|| message == "WiFi: Available" || message == "WiFi: Unavailable";
+
+		if (oledReady_ && concise) {
 			oled_.D(message);
 		}
 	});
