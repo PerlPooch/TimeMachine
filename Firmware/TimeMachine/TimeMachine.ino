@@ -61,7 +61,7 @@ void setup() {
 //	Serial.println(button.pressed() ? "Button: pressed" : "Button: released");
 
 	const bool busReady = Wire.begin(Board::SDA_PIN, Board::SCL_PIN, 100000);
-	const bool oledReady = busReady && oled.setup();
+	const bool oledReady = busReady && oled.begin();
 	application.begin(VERSION, defaultPrimary, busReady, oledReady);
 }
 

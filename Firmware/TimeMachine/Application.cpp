@@ -152,11 +152,12 @@ bool Application::beginConfig(const char* version, bool defaultPrimary) {
 	}
 
 	// Recover an uninitialized or damaged config filesystem; Wi-Fi NVS is separate.
-	bool configReady = config_.setup();
+	using FormatPolicy = MDS_Config::FormatPolicy;
+	bool configReady = config_.begin(FormatPolicy::Never);
 
 	if (!configReady) {
 		Serial.println("Config: mount failed; formatting config filesystem");
-		configReady = config_.setup(true);
+		configReady = config_.begin(FormatPolicy::OnMountFailure);
 		Serial.println(configReady ? "Config: filesystem recovered; using defaults" : config_.lastError());
 	}
 
