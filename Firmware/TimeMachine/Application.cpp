@@ -268,10 +268,6 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 		Serial.println(message);
 		if (oledReady_) {
 			oled_.D(message);
-			// Repeat the current IP after NTP's startup messages.
-			if (message == "Time: synchronized" && wifi_.ready()) {
-				oled_.D(WiFi.localIP().toString());
-			}
 		}
 	});
 	time_.setNetworkReadyCallback([this]() {
@@ -773,7 +769,18 @@ void Application::tick() {
 	if (mode_ == Mode::Clock) {
 		http_.tick();
 		serviceSerial();
+
+		// Detect synchronization through time state, independently of diagnostic text.
+		const bool timeWasValid = time_.valid();
+		const time_t previousSync = time_.lastSyncUtc();
 		timeController_.tick();
+
+		if (oledReady_ && wifi_.ready() && time_.valid()
+			&& (!timeWasValid || time_.lastSyncUtc() != previousSync)) {
+			// Keep the current IP visible after synchronization diagnostics.
+			oled_.D(WiFi.localIP().toString());
+		}
+
 		weatherController_.tick();
 	}
 	

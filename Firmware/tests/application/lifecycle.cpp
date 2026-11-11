@@ -127,6 +127,21 @@ int main(){
   server.request("/api/config",{{"timeOffset","+0s"}});assert(server.code==200);app.tick();
   auto syncNotices=oled.messages.size();calls=wire.calls;++utc;nowMillis+=1000;app.tick();assert(wire.calls>calls&&oled.messages.size()==syncNotices);
   WiFi.address="10.0.0.42";synchronizedTick(app);assert(oled.messages.back()=="10.0.0.42");
+
+  // A backward clock correction is a new sync; recovery can reuse its timestamp.
+  const time_t beforeCorrection = utc;
+  utc -= 60;
+  synchronizedTick(app);
+  assert(oled.messages.back() == WiFi.address);
+  const time_t correctedUtc = utc;
+  utc = 0;
+  synchronizedTick(app);
+  assert(oled.messages.back() == "Time: invalid NTP timestamp");
+  utc = correctedUtc;
+  synchronizedTick(app);
+  assert(oled.messages.back() == WiFi.address);
+  utc = beforeCorrection;
+
   server.request("/api/config",{{"ntpServer1","test.pool.example"},{"pwm","100"}});assert(server.code==200&&matrix.brightnessLimit()==100);
   assert(LittleFS.files["/config.json"].find("\"version\"")==String::npos);
   server.request("/api/config",{{"gcc","12"}});assert(server.code==200&&matrix.globalCurrent()==12&&wire.regs[3][1]==12);
