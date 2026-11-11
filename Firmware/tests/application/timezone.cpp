@@ -97,14 +97,11 @@ static void checkWeatherWithoutStatusCallback() {
  assert(String(config.get("timeZone").as<const char*>()) == "UTC0");
  assert(weather.available());
 
- // A later success reapplies the weather timezone even if the offset is unchanged.
- const time_t originalUtc = utc;
- utc += 60;
+ // An identical result in the same UTC second must still reapply its timezone.
  nowMillis += 60000;
  finishQuery(20700);
  assert(String(config.get("timeZone").as<const char*>()) == "UTC-05:45:00");
  assert(tasks.empty());
- utc = originalUtc;
  nowMillis = 0;
 }
 

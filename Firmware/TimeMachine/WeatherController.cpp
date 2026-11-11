@@ -47,16 +47,12 @@ void WeatherController::tick() {
 
 	weather_.begin(options);
 
-	// Compare the accepted cache around tick(), independently of diagnostic callbacks.
-	const bool hadSample = weather_.available();
-	const time_t lastSuccess = weather_.lastSuccessUtc();
-	const int32_t previousOffset = weather_.sample().timezoneOffsetSeconds;
+	// Detect accepted results even when their timestamps and values are identical.
+	const uint32_t previousSampleVersion = weather_.sampleVersion();
 
 	weather_.tick();
 
-	// Also detect offset changes when successive results share the same UTC second.
-	if (weather_.available() && (!hadSample || weather_.lastSuccessUtc() != lastSuccess
-		|| weather_.sample().timezoneOffsetSeconds != previousOffset)) {
+	if (weather_.available() && weather_.sampleVersion() != previousSampleVersion) {
 		applyTimezone();
 	}
 }
