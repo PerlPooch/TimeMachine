@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      TimeMachine/TimeMachine.ino
- * Firmware:  0.5.1
- * Git base:  1e4e91f4dbce
+ * Firmware:  0.6.0
+ * Git base:  4967da86d1b1
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -14,7 +14,7 @@
  * ===========================================================================
  */
 
-#define VERSION				"0.5.1"
+#define VERSION				"0.6.0"
 
 #include <Arduino.h>
 #include <Wire.h>

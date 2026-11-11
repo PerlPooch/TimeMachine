@@ -1,8 +1,8 @@
 #!/bin/sh
 # ===========================================================================
 # File:      tests/application/run.sh
-# Firmware:  0.5.1
-# Git base:  1e4e91f4dbce
+# Firmware:  0.6.0
+# Git base:  4967da86d1b1
 #
 # Copyright (c) 2026 Marc D. Spencer.
 # All Rights Reserved under the applicable license.
@@ -20,7 +20,7 @@ MDS_LIBRARIES=${MDS_LIBRARIES:-"$TEST_DIR/../../../../MDS-Libraries"}
 TIME_MACHINE_SKETCH=${TIME_MACHINE_SKETCH:-"$TEST_DIR/../../TimeMachine"}
 TEST_BUILD=$(mktemp -d)
 trap 'rm -rf "$TEST_BUILD"' EXIT HUP INT TERM
-for test in lifecycle reset states serial wifi timezone acknowledgments addresses configrouting; do
+for test in lifecycle reset states serial wifi timezone acknowledgments addresses configrouting upload; do
 c++ -std=c++17 -Wall -Wextra -DDISPLAY_TEST_MODE=DisplayTest::SegmentWalk \
  -I"$TEST_DIR/host" -I"$TEST_DIR/../weather/host" -I"$TEST_DIR/../time/host" \
  -I"$MDS_LIBRARIES/MDS_Config/src" -I"$MDS_LIBRARIES/MDS_HTTP/src" \
@@ -31,6 +31,7 @@ c++ -std=c++17 -Wall -Wextra -DDISPLAY_TEST_MODE=DisplayTest::SegmentWalk \
  "$TIME_MACHINE_SKETCH/Clock.cpp" "$TIME_MACHINE_SKETCH/TimeController.cpp" \
  "$TIME_MACHINE_SKETCH/WeatherController.cpp" "$TIME_MACHINE_SKETCH/Tests.cpp" \
  "$MDS_LIBRARIES/MDS_Config/src/MDS_Config.cpp" "$MDS_LIBRARIES/MDS_HTTP/src/MDS_HTTP.cpp" \
+ "$MDS_LIBRARIES/MDS_HTTP/src/MDS_HTTPUpload.cpp" \
  "$MDS_LIBRARIES/MDS_Time/src/MDS_Time.cpp" "$MDS_LIBRARIES/MDS_Weather/src/MDS_Weather.cpp" \
  -o "$TEST_BUILD/$test"
 "$TEST_BUILD/$test"

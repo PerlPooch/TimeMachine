@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      TimeMachine/Application.cpp
- * Firmware:  0.5.1
- * Git base:  1e4e91f4dbce
+ * Firmware:  0.6.0
+ * Git base:  4967da86d1b1
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -261,6 +261,10 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 	http_.setStatusCallback([](const String& message) {
 		// Report listener transitions without managing them in Application.
 		Serial.println(message);
+	});
+	http_.setUploadCompleteCallback([this]() {
+		// Reboot from the application loop after HTTP finishes sending its response.
+		uploadRebootPending_ = true;
 	});
 	http_.begin();
 
@@ -771,6 +775,13 @@ void Application::tick() {
 	// Shared services keep running during startup, reset holds, and display faults.
 	if (mode_ == Mode::Clock) {
 		http_.tick();
+
+		if (uploadRebootPending_) {
+			http_.stop();
+			transitionTo(State::Rebooting);
+			return;
+		}
+
 		serviceSerial();
 
 		// Detect synchronization through time state, independently of diagnostic text.

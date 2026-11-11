@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      TimeMachine/Application.h
- * Firmware:  0.5.1
- * Git base:  1e4e91f4dbce
+ * Firmware:  0.6.0
+ * Git base:  4967da86d1b1
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -95,6 +95,7 @@ private:
 	uint32_t resetPressedAt_ = 0;
 	Display::Frame resetFrame_; // Output to restore if the reset is canceled.
 	bool oledReady_ = false;
+	bool uploadRebootPending_ = false;
 
 	// Port A / J2: RX GPIO0, TX GPIO1; USB CDC remains the debug console.
 	HardwareSerial serialA_{1};
@@ -133,7 +134,7 @@ private:
 	static constexpr const char* ConfigPath = "/config.json";
 	MDS_Config config_{ConfigPath};
 	MDS_WiFi wifi_;
-	MDS_HTTP http_;
+	MDS_HTTP http_{MDS_HTTP::Options{MDS_HTTP::UploadMode::Enabled}};
 	MDS_Time time_;
 	MDS_Weather weather_;
 	ApplicationApi api_;
