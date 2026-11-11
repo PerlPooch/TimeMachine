@@ -22,15 +22,24 @@
 // Application-owned config adapter; weather does not read global settings itself.
 class WeatherController {
 public:
-	// Borrow settings and the weather service; Application installs the status callback.
-	WeatherController(MDS_Weather& weather, MDS_Config& config) : weather_(weather), config_(config) {}
+	// Borrow settings and register accepted updates; Application owns diagnostic output.
+	WeatherController(MDS_Weather& weather, MDS_Config& config);
+
+	// Release the update callback before the adapter's captured references expire.
+	~WeatherController();
+
+	// Keep the registered callback bound to its original adapter.
+	WeatherController(const WeatherController&) = delete;
+
+	// Prevent assignment from replacing an adapter that owns callback registration.
+	WeatherController& operator=(const WeatherController&) = delete;
 
 	// Apply current settings and service weather retrieval without blocking the display.
 	void tick();
 
 private:
 	// Replace the configured timezone after the service accepts a new cached sample.
-	void applyTimezone();
+	void applyTimezone(const MDS_Weather::Sample& sample);
 
 	MDS_Weather& weather_;
 	MDS_Config& config_;

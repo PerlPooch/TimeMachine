@@ -17,9 +17,23 @@
 #include "WeatherController.h"
 #include <stdio.h>
 
+// Register one handler for accepted samples, independently of diagnostic callbacks.
+WeatherController::WeatherController(MDS_Weather& weather, MDS_Config& config)
+	: weather_(weather), config_(config) {
+	weather_.setUpdateCallback([this](const MDS_Weather::Sample& sample) {
+		// Use the borrowed sample immediately without re-entering Weather.
+		applyTimezone(sample);
+	});
+}
+
+// Remove the callback while the borrowed weather service is still alive.
+WeatherController::~WeatherController() {
+	weather_.setUpdateCallback(nullptr);
+}
+
 // Replace runtime timeZone from a successful weather result; normal time servicing applies it.
-void WeatherController::applyTimezone() {
-	const int32_t offset = weather_.sample().timezoneOffsetSeconds;
+void WeatherController::applyTimezone(const MDS_Weather::Sample& sample) {
+	const int32_t offset = sample.timezoneOffsetSeconds;
 	const uint32_t seconds = offset < 0 ? uint32_t(-offset) : uint32_t(offset);
 
 	char zone[20];
@@ -47,12 +61,5 @@ void WeatherController::tick() {
 
 	weather_.begin(options);
 
-	// Detect accepted results even when their timestamps and values are identical.
-	const uint32_t previousSampleVersion = weather_.sampleVersion();
-
 	weather_.tick();
-
-	if (weather_.available() && weather_.sampleVersion() != previousSampleVersion) {
-		applyTimezone();
-	}
 }
