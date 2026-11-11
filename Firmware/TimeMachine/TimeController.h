@@ -28,10 +28,14 @@ public:
 	TimeController(MDS_Time& time, MDS_Config& config, MDS_Display& oled)
 		: time_(time), config_(config), oled_(oled) {}
 
+	// Apply initial settings and record status display availability.
 	bool begin(bool oledReady);
-	void tick(bool networkReady);
+
+	// Apply current settings and service the time library.
+	void tick();
 
 private:
+	// Translate application settings into time service options.
 	bool configure();
 
 	MDS_Time& time_;

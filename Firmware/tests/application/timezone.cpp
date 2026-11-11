@@ -58,6 +58,14 @@ static void checkWeatherWithoutStatusCallback() {
  assert(config.set(edits));
 
  MDS_Weather weather;
+ weather.setNetworkReadyCallback([]() {
+     // Isolate timezone adaptation from connection management.
+     return true;
+ });
+ weather.setClockReadyCallback([]() {
+     // Provide a usable TLS clock for these weather-result scenarios.
+     return true;
+ });
  WeatherController controller(weather, config);
  weather.setStatusCallback(nullptr);
 
@@ -66,10 +74,10 @@ static void checkWeatherWithoutStatusCallback() {
   httpState.status = status;
   httpState.payload = String(std::string("{\"main\":{\"temp\":70.25},\"timezone\":")
    + std::to_string(offset) + ",\"dt\":1792944000,\"weather\":[{\"main\":\"Clear\"}]}");
-  controller.tick(true, true);
+  controller.tick();
   assert(tasks.size() == 1);
   runWorker();
-  controller.tick(true, true);
+  controller.tick();
  };
 
  finishQuery(-14400);
@@ -82,7 +90,7 @@ static void checkWeatherWithoutStatusCallback() {
  JsonDocument manual;
  manual["timeZone"] = "UTC0";
  assert(config.set(manual));
- controller.tick(true, true);
+ controller.tick();
  assert(String(config.get("timeZone").as<const char*>()) == "UTC0");
  nowMillis += 600000;
  finishQuery(3600, 500);

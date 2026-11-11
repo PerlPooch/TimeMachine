@@ -73,7 +73,6 @@ private:
 	static const char* stateName(State state);
 	bool beginConfig(const char* version, bool defaultPrimary);
 	bool beginMode();
-	void serviceHttp();
 	void serviceSerial();
 	void serviceIPAddresses(uint32_t now);
 	bool receiveIPAddress(const char* address, size_t length, size_t index);

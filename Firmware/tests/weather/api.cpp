@@ -33,12 +33,32 @@ int main(){
   {"latitude",Type::Text,Access::ReadWrite,true,"",0,0,24,false,false,MDS_Weather::validLatitude},
   {"longitude",Type::Text,Access::ReadWrite,true,"",0,0,24,false,false,MDS_Weather::validLongitude}
  };
- MDS_Config config;assert(config.setSettings(settings));assert(config.begin());TwoWire wire;MatrixDriver matrix(wire,21,4);uint8_t channel[]={0};assert(matrix.begin(channel,1));MDS_Weather weather;MDS_HTTP http;Display display(matrix);ApplicationApi api(http,config,matrix,display.commands(),&weather);api.begin();http.begin();auto& server=http.server();
+ MDS_Config config;assert(config.setSettings(settings));assert(config.begin());TwoWire wire;MatrixDriver matrix(wire,21,4);uint8_t channel[]={0};assert(matrix.begin(channel,1));bool clockReady = false;
+ MDS_Weather weather;
+ weather.setNetworkReadyCallback([]() {
+     // Simulate a connected station for cache API tests.
+     return true;
+ });
+ weather.setClockReadyCallback([&]() {
+     // Delay HTTPS until the scenario supplies a usable clock.
+     return clockReady;
+ });MDS_HTTP http;
+ http.setNetworkReadyCallback([]() {
+     // Supply a connected network for direct API lifecycle tests.
+     return true;
+ });
+ Display display(matrix);ApplicationApi api(http,config,matrix,display.commands(),&weather);api.begin();http.begin();auto& server=http.server();
  server.request("/api/weather");assert(server.code==200&&String(json(server.body)["state"].as<const char*>())=="disabled"&&!json(server.body)["available"].as<bool>());
  server.request("/api/config",{{"owAppKey","TESTKEY"},{"latitude","42.5"},{"longitude","-71.3"}});assert(server.code==200&&server.body.find("TESTKEY")==String::npos);assert(LittleFS.files["/config.json"].find("TESTKEY")!=String::npos);
  server.request("/api/config",{{"latitude","95"},{"owAppKey","CHANGED"}});assert(server.code==400&&String(config.get("owAppKey").as<const char*>())=="TESTKEY");
- MDS_Weather::Options options;options.apiKey=config.get("owAppKey").as<const char*>();options.latitude=config.get("latitude").as<const char*>();options.longitude=config.get("longitude").as<const char*>();assert(weather.begin(options));weather.tick(true,false);server.request("/api/weather");assert(String(json(server.body)["state"].as<const char*>())=="waiting_time"&&tasks.empty());
- httpState.payload=R"({"main":{"temp":70.25},"timezone":-14400,"dt":1792944000,"weather":[{"main":"Clear","description":"clear sky"}]})";weather.tick(true,true);runWorker();weather.tick(true,true);
+ MDS_Weather::Options options;options.apiKey=config.get("owAppKey").as<const char*>();options.latitude=config.get("latitude").as<const char*>();options.longitude=config.get("longitude").as<const char*>();assert(weather.begin(options));clockReady = false;
+ weather.tick();
+ server.request("/api/weather");assert(String(json(server.body)["state"].as<const char*>())=="waiting_time"&&tasks.empty());
+ httpState.payload=R"({"main":{"temp":70.25},"timezone":-14400,"dt":1792944000,"weather":[{"main":"Clear","description":"clear sky"}]})";clockReady = true;
+ weather.tick();
+ runWorker();clockReady = true;
+ weather.tick();
+ 
  server.request("/api/weather");auto response=json(server.body);assert(server.code==200&&response["fresh"].as<bool>()&&response["temperatureF"].as<float>()==70.25f&&response["timezoneOffsetSeconds"].as<int>()==-14400);assert(server.body.find("TESTKEY")==String::npos);
  server.request("/api/config",{{"owAppKey",""}});assert(server.code==200&&String(config.get("owAppKey").as<const char*>()).empty());
  puts("PASS: optional weather endpoint, background cache reads, hidden key persistence, coordinate validation, atomic rejection, TLS clock gate, and temperature/offset/status JSON.");

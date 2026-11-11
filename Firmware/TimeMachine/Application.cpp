@@ -254,7 +254,15 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 	});
 
 	api_.begin();
-	serviceHttp();
+	http_.setNetworkReadyCallback([this]() {
+		// Let HTTP manage its listener using the connection manager's readiness.
+		return wifi_.ready();
+	});
+	http_.setStatusCallback([](const String& message) {
+		// Report listener transitions without managing them in Application.
+		Serial.println(message);
+	});
+	http_.begin();
 
 	time_.setStatusCallback([this](const String& message) {
 		Serial.println(message);
@@ -266,14 +274,27 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 			}
 		}
 	});
+	time_.setNetworkReadyCallback([this]() {
+		// Let the connection manager define station and IP readiness.
+		return wifi_.ready();
+	});
 	timeController_.begin(oledReady_);
+
+	weather_.setNetworkReadyCallback([this]() {
+		// Use the same connectivity prerequisite as time synchronization.
+		return wifi_.ready();
+	});
+	weather_.setClockReadyCallback([this]() {
+		// Require synchronized UTC before starting verified HTTPS.
+		return time_.valid();
+	});
 
 	// Keep weather diagnostics separate from the controller's timezone updates.
 	weather_.setStatusCallback([](const String& message) {
 		Serial.println(message);
 	});
 
-	weatherController_.tick(wifi_.ready(), time_.valid());
+	weatherController_.tick();
 
 	// A missing display still permits network and configuration services.
 	transitionTo(busReady ? State::SegmentTest : State::DisplayFault);
@@ -292,18 +313,6 @@ bool Application::beginMode() {
 			return clock_.begin();
 	}
 	return false;
-}
-
-// Start or stop the HTTP listener as station connectivity changes.
-void Application::serviceHttp() {
-	if (wifi_.ready()) {
-		if (!http_.running()) {
-			http_.begin();
-			Serial.println("HTTP: listening on port 80");
-		}
-	} else if (http_.running()) {
-		http_.stop();
-	}
 }
 
 // Receive length-delimited frames and dispatch them by payload type.
@@ -711,10 +720,17 @@ void Application::serviceButton() {
 		case State::ResetFailed:
 			// A failed erase waits for release; retry requires a fresh press.
 			if (!button_.pressed()) {
+				const bool resumeHttp = state_ == State::ResetFailed && mode_ == Mode::Clock;
+
 				if (!matrix_.ready() || !display_.show(resetFrame_)) {
 					resumeState_ = State::DisplayFault;
 				}
 				transitionTo(resumeState_);
+
+				if (resumeHttp) {
+					// Explicitly re-enable HTTP after the user releases a failed reset.
+					http_.begin();
+				}
 			} else if (state_ == State::ResetHeld && button_.rawPressed()
 				&& uint32_t(millis() - resetPressedAt_) >= ResetHoldMs) {
 				// Raw release cancels at the deadline, even during release debounce.
@@ -755,11 +771,10 @@ void Application::tick() {
 
 	// Shared services keep running during startup, reset holds, and display faults.
 	if (mode_ == Mode::Clock) {
-		serviceHttp();
 		http_.tick();
 		serviceSerial();
-		timeController_.tick(wifi_.ready());
-		weatherController_.tick(wifi_.ready(), time_.valid());
+		timeController_.tick();
+		weatherController_.tick();
 	}
 	
 	// Startup completion enables the mode; an animation failure disables rendering.

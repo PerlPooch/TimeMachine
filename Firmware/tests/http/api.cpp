@@ -37,7 +37,12 @@ int main(){
  };
  MDS_Config config;assert(config.setSettings(settings));assert(config.begin());
  TwoWire wire;MatrixDriver matrix(wire,21);uint8_t channels[]={0,1};assert(matrix.begin(4,channels,2));assert(matrix.setBrightness(0,255));assert(matrix.setBrightness(1,128));
- Display display(matrix);MDS_HTTP http;ApplicationApi api(http,config,matrix,display.commands());auto& server=http.server();
+ Display display(matrix);MDS_HTTP http;
+ http.setNetworkReadyCallback([]() {
+     // Supply a connected network for direct API lifecycle tests.
+     return true;
+ });
+ ApplicationApi api(http,config,matrix,display.commands());auto& server=http.server();
  assert(server.port==80&&!http.running());http.tick();assert(server.ticks==0);
  api.begin();api.begin();assert(server.registrations==4);
  // Website mappings stay within /www and no longer expose configuration at root.

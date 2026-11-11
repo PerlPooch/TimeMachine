@@ -49,7 +49,7 @@ bool TimeController::begin(bool oledReady) {
 }
 
 // Apply setting changes, including weather updates, before servicing network time.
-void TimeController::tick(bool networkReady) {
+void TimeController::tick() {
 	configure();
-	time_.tick(networkReady);
+	time_.tick();
 }

@@ -133,6 +133,7 @@ int main(){
   press(app, 100);
   at(app, 5130, LOW);
   assert(ESP.restarts == 0 && app.state() == Application::State::ResetFailed);
+  assert(WebServer::current->stops == 1 && WebServer::current->starts == 1);
   assert(MDS_WiFi::current->erases == (wifiFailure ? 1 : 0));
   expectWebsite();
 
@@ -146,6 +147,7 @@ int main(){
 
   release(app, 6100);
   assert(app.state() == Application::State::Running);
+  assert(WebServer::current->starts == 2);
   LittleFS.removeFailurePath.clear();
   MDS_WiFi::current->eraseOK = true;
 

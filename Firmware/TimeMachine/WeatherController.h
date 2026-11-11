@@ -26,7 +26,7 @@ public:
 	WeatherController(MDS_Weather& weather, MDS_Config& config) : weather_(weather), config_(config) {}
 
 	// Apply current settings and service weather retrieval without blocking the display.
-	void tick(bool networkReady, bool clockReady);
+	void tick();
 
 private:
 	// Replace the configured timezone after the service accepts a new cached sample.

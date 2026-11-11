@@ -38,7 +38,7 @@ void WeatherController::applyTimezone() {
 }
 
 // Apply current weather settings and service retrieval when network and time are ready.
-void WeatherController::tick(bool networkReady, bool clockReady) {
+void WeatherController::tick() {
 	MDS_Weather::Options options;
 	options.apiKey = config_.get("owAppKey").as<const char*>();
 	options.latitude = config_.get("latitude").as<const char*>();
@@ -52,7 +52,7 @@ void WeatherController::tick(bool networkReady, bool clockReady) {
 	const time_t lastSuccess = weather_.lastSuccessUtc();
 	const int32_t previousOffset = weather_.sample().timezoneOffsetSeconds;
 
-	weather_.tick(networkReady, clockReady);
+	weather_.tick();
 
 	// Also detect offset changes when successive results share the same UTC second.
 	if (weather_.available() && (!hadSample || weather_.lastSuccessUtc() != lastSuccess

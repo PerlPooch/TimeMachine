@@ -47,7 +47,18 @@ int main(){
  MDS_Config config;assert(config.setSettings(settings));TwoWire wire;MatrixDriver matrix(wire,21,4);MDS_Display oled;MDS_Time time;
  TimeController controller(time,config,oled);assert(controller.begin(true));
  Display mainDisplay(matrix);assert(mainDisplay.begin());int beforeClock=wire.calls;Clock display(time,config,mainDisplay.commands(),oled);assert(display.begin());assert(wire.calls==beforeClock);assert(mainDisplay.tick());assert(matrix.ready()&&matrix.globalCurrent()==4);
- auto tick=[&](bool online){controller.tick(online);display.tick();mainDisplay.tick();};
+ bool networkReady = false;
+ time.setNetworkReadyCallback([&]() {
+     // Control connectivity independently of display servicing.
+     return networkReady;
+ });
+ auto tick = [&](bool online) {
+     // Service the configured time source and display for this scenario.
+     networkReady = online;
+     controller.tick();
+     display.tick();
+     mainDisplay.tick();
+ };
  // Before synchronization the unavailable-time pattern has no indicators.
  expect(wire,"-------------",false,false,false);
  int calls=wire.calls;tick(false);tick(true);assert(wire.calls==calls&&!time.valid());
@@ -97,7 +108,9 @@ int main(){
  display.tick();assert(mainDisplay.commands().take(taken));
  assert(taken.kind==Display::DisplayCommand::Kind::Clock && taken.timeValid && taken.dateTime.hour==2);
  offset(0);
- calls=wire.calls;Clock diagnostic(time,config,mainDisplay.commands(),oled);++utc;controller.tick(false);diagnostic.tick();assert(wire.calls==calls);
+ calls=wire.calls;Clock diagnostic(time,config,mainDisplay.commands(),oled);++utc;networkReady = false;
+ controller.tick();
+ diagnostic.tick();assert(wire.calls==calls);
  wire.failAt=wire.calls+1;nowMillis+=1000;tick(false);assert(!matrix.ready()&&enableLevel==LOW);calls=wire.calls;++utc;tick(false);assert(wire.calls==calls);
  puts("PASS: NTP waiting frame, real calendar/12-hour clock, AM/PM, blinking colon, offline ticking, immediate timezone/offset edits, shifted DST/calendar rollovers, overflow recovery, queue retry, diagnostic isolation, and matrix failure shutdown.");
 }
