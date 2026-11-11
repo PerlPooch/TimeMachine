@@ -236,9 +236,9 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 	// Keep A/B reception active during both saved-network retries and provisioning.
 	wifiOptions.connectionPolicy = MDS_WiFi::ConnectionPolicy::RetrySavedNetworkAsync;
 	Serial.println("Startup: beginning WiFi");
-	const bool wifiStarted = wifi_.begin(wifiOptions);
-	Serial.println(wifi_.ready() ? "Startup: WiFi online" :
-		(wifiStarted ? "Startup: WiFi waiting for station/IP" : "Startup: WiFi retrying in loop"));
+	wifi_.begin(wifiOptions);
+	Serial.print("Startup: WiFi ");
+	Serial.println(MDS_WiFi::stateName(wifi_.state()));
 
 	api_.setSerialRouter([this](uint8_t destinations, const char* payload, size_t length) {
 		return routeSerialPayload(destinations, payload, length);

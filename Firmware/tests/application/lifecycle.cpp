@@ -41,6 +41,33 @@ void expectMessage(MatrixDriver& matrix,const char* text){
  for(const auto& discrete:DisplayMap::DiscreteMap)assert(matrix.brightness(discrete.address)==0);
 }
 int main(){
+ // Distinguish active provisioning from a saved-network attempt in startup diagnostics.
+ struct WiFiStartupCase { bool online; bool saved; const char* expected; };
+ for (const auto& startup : {
+  WiFiStartupCase{true, false, "Ready"},
+  WiFiStartupCase{false, false, "Provisioning"},
+  WiFiStartupCase{false, true, "Connecting"}
+ }) {
+  LittleFS = FakeFS{};
+  Serial.output.clear();
+  savedWiFi = wifi_config_t{};
+  if (startup.saved) {
+   strcpy(reinterpret_cast<char*>(savedWiFi.sta.ssid), "Saved Network");
+  }
+
+  TwoWire wire;
+  MatrixDriver matrix(wire, 21);
+  MDS_Display oled;
+  Button button(9);
+  button.begin();
+  Application app(Application::Mode::Clock, matrix, oled, button);
+  MDS_WiFi::current->online = startup.online;
+  assert(app.begin("test", false, true, true));
+  const std::string expected = std::string("Startup: WiFi ") + startup.expected + "\n";
+  assert(Serial.output.find(expected) != std::string::npos);
+ }
+ savedWiFi = wifi_config_t{};
+
  // Startup seeds primary from the jumper, then loads saved settings; API edits remain writable.
  struct RoleCase {bool jumper;const char* saved;bool expected;};
  for (const auto& role : {

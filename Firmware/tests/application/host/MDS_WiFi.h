@@ -20,6 +20,41 @@
 #include <esp_wifi.h>
 class MDS_WiFi {
 public:
+ enum class State {
+  Stopped, Starting, WaitingForCredentials, Provisioning,
+  Connecting, WaitingToRetry, Ready, RebootRequested
+ };
+ State state_ = State::Stopped;
+
+ // Expose the startup snapshot used by application diagnostics.
+ State state() const {
+  return state_;
+ }
+
+ // Match the library's diagnostic names without requiring platform Wi-Fi services.
+ static const char* stateName(State state) {
+  switch (state) {
+   case State::Stopped:
+    return "Stopped";
+   case State::Starting:
+    return "Starting";
+   case State::WaitingForCredentials:
+    return "WaitingForCredentials";
+   case State::Provisioning:
+    return "Provisioning";
+   case State::Connecting:
+    return "Connecting";
+   case State::WaitingToRetry:
+    return "WaitingToRetry";
+   case State::Ready:
+    return "Ready";
+   case State::RebootRequested:
+    return "RebootRequested";
+  }
+
+  return "Unknown";
+ }
+
  enum class ConnectionPolicy {Legacy,RetrySavedNetwork,RetrySavedNetworkAsync};
  struct Options {const char* accessPointPrefix="";const char* portalTitle="";ConnectionPolicy connectionPolicy=ConnectionPolicy::Legacy;};
  inline static MDS_WiFi* current=nullptr;
@@ -33,7 +68,16 @@ public:
  std::function<void(const String&)> callback;
  MDS_WiFi(){current=this;}
  void setStatusCallback(std::function<void(const String&)> value){callback=value;}
- bool begin(const Options& options){policy=options.connectionPolicy;++begins;portal=!online&&!savedWiFi.sta.ssid[0]&&policy==ConnectionPolicy::RetrySavedNetworkAsync;return online||portal;}
+ // Preserve boolean startup semantics while publishing the observed lifecycle state.
+ bool begin(const Options& options) {
+  policy = options.connectionPolicy;
+  ++begins;
+  portal = !online && !savedWiFi.sta.ssid[0]
+   && policy == ConnectionPolicy::RetrySavedNetworkAsync;
+  state_ = online ? State::Ready : (portal ? State::Provisioning : State::Connecting);
+
+  return online || portal;
+ }
  // Model library acceptance and idempotence while retaining observable call counts.
  bool setCredentials(const char* ssid,const char* password){
   ++credentialCalls;

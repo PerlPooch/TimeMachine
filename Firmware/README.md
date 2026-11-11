@@ -23,7 +23,9 @@ The script covers sketch sources, font tables, partition CSV, host tests/stubs,
 and firmware tools. It preserves script shebangs and existing source comments.
 Refreshing banners does not change the running firmware version or API behavior.
 
-Open `TimeMachine/TimeMachine.ino`. Build settings, dependencies, OTA partitions, and upload instructions are in [BUILD.md](../BUILD.md). The current firmware requires MDS_WiFi 0.1.4 or newer and WiFiManager 2.0.17 or newer.
+Open `TimeMachine/TimeMachine.ino`. Build settings, dependencies, OTA partitions, and upload instructions are in [BUILD.md](../BUILD.md).
+
+Shared-library versions: MDS_Config 0.7.0, MDS_Display 0.1.0, MDS_WiFi 0.2.0, MDS_HTTP 0.2.0, MDS_Time 0.2.0, and MDS_Weather 0.4.0. WiFiManager 2.0.17 or newer is also required. Time and HTTP use readiness callbacks introduced in 0.2.0; Weather uses the accepted-sample update callback introduced in 0.4.0.
 
 ## Wi-Fi provisioning over A/B
 
