@@ -15,7 +15,6 @@
  */
 
 #include "TimeController.h"
-#include <MDS_Display.h>
 
 // Apply current timezone and NTP settings, reporting only changed configuration errors.
 bool TimeController::configure() {
@@ -28,9 +27,8 @@ bool TimeController::configure() {
 	if (!time_.begin(options)) {
 		if (reportedError_ != time_.lastError()) {
 			reportedError_ = time_.lastError();
-			Serial.println(reportedError_);
-			if (oledReady_) {
-				oled_.D(reportedError_);
+			if (statusCallback_) {
+				statusCallback_(reportedError_);
 			}
 		}
 
@@ -42,9 +40,8 @@ bool TimeController::configure() {
 	return true;
 }
 
-// Record OLED availability and apply the initial configured or default timezone.
-bool TimeController::begin(bool oledReady) {
-	oledReady_ = oledReady;
+// Apply the initial configured or default timezone.
+bool TimeController::begin() {
 	return configure();
 }
 

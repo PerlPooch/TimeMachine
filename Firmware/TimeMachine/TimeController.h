@@ -19,17 +19,22 @@
 #include <MDS_Time.h>
 #include <MDS_Config.h>
 
-class MDS_Display;
-
 // Apply application time settings and service NTP independently of display modes.
 class TimeController {
 public:
-	// Borrow settings, the time service, and status output without starting synchronization.
-	TimeController(MDS_Time& time, MDS_Config& config, MDS_Display& oled)
-		: time_(time), config_(config), oled_(oled) {}
+	using StatusCallback = MDS_Time::StatusCallback;
 
-	// Apply initial settings and record status display availability.
-	bool begin(bool oledReady);
+	// Borrow settings and the time service without starting synchronization.
+	TimeController(MDS_Time& time, MDS_Config& config)
+		: time_(time), config_(config) {}
+
+	// Let the application choose diagnostic outputs; nullptr silences reporting.
+	void setStatusCallback(StatusCallback callback) {
+		statusCallback_ = callback;
+	}
+
+	// Apply the initial time settings.
+	bool begin();
 
 	// Apply current settings and service the time library.
 	void tick();
@@ -40,7 +45,6 @@ private:
 
 	MDS_Time& time_;
 	MDS_Config& config_;
-	MDS_Display& oled_;
+	StatusCallback statusCallback_;
 	String reportedError_;
-	bool oledReady_ = false;
 };

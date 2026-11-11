@@ -44,7 +44,7 @@ Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, But
 	button_(button),
 	display_(matrix),
 	api_(http_, config_, matrix_, display_.commands(), &weather_),
-	timeController_(time_, config_, oled_), weatherController_(weather_, config_),
+	timeController_(time_, config_), weatherController_(weather_, config_),
 	clock_(time_, config_, display_.commands(), oled_), tests_(matrix_, display_, oled_) {}
 
 // Provide readable lifecycle names for transition reports.
@@ -264,17 +264,20 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 	});
 	http_.begin();
 
-	time_.setStatusCallback([this](const String& message) {
+	// Route both service status and controller configuration errors to application outputs.
+	const auto reportTimeStatus = [this](const String& message) {
 		Serial.println(message);
 		if (oledReady_) {
 			oled_.D(message);
 		}
-	});
+	};
+	time_.setStatusCallback(reportTimeStatus);
+	timeController_.setStatusCallback(reportTimeStatus);
 	time_.setNetworkReadyCallback([this]() {
 		// Let the connection manager define station and IP readiness.
 		return wifi_.ready();
 	});
-	timeController_.begin(oledReady_);
+	timeController_.begin();
 
 	weather_.setNetworkReadyCallback([this]() {
 		// Use the same connectivity prerequisite as time synchronization.

@@ -34,7 +34,63 @@ void expect(TwoWire& wire,const char* text,bool am,bool colon,bool valid=true){
  if(colon){expected[DisplayMap::discreteAddress(DisplayMap::DiscreteIndex::Colon1)]=expected[DisplayMap::discreteAddress(DisplayMap::DiscreteIndex::Colon2)]=DisplayGamma::toPWM(92);}
  for(int i=0;i<192;++i)assert(wire.regs[1][i]==expected[i]);
 }
+// Verify configuration errors are optional, deduplicated, and reported again after recovery.
+static void checkControllerStatus() {
+ using Type = MDS_ConfigType;
+ using Access = MDS_ConfigAccess;
+ const MDS_ConfigSetting settings[] = {
+  {"timeZone", Type::Text, Access::ReadWrite, false, "UTC0", 0, 0, 128},
+  {"ntpServer1", Type::Text, Access::ReadWrite, false, "pool.ntp.org", 0, 0, 64},
+  {"ntpServer2", Type::Text, Access::ReadWrite, false, "", 0, 0, 64},
+  {"ntpInterval", Type::Unsigned, Access::ReadWrite, false, nullptr, 3600, 60, 86400}
+ };
+ MDS_Config config;
+ assert(config.setSettings(settings));
+ MDS_Time time;
+ std::vector<String> messages;
+ TimeController controller(time, config);
+ assert(controller.begin());
+
+ controller.setStatusCallback([&](const String& message) {
+  // Capture controller errors without requiring an OLED or Serial destination.
+  messages.push_back(message);
+ });
+
+ JsonDocument edit;
+ edit["ntpServer1"] = "";
+ assert(config.set(edit));
+ assert(!controller.begin());
+ assert(messages.size() == 1 && messages.back() == time.lastError());
+ controller.tick();
+ assert(messages.size() == 1);
+
+ edit["timeZone"] = "";
+ assert(config.set(edit));
+ controller.tick();
+ assert(messages.size() == 2 && messages.back() == "Invalid POSIX timezone");
+
+ edit["ntpServer1"] = "pool.ntp.org";
+ edit["timeZone"] = "UTC0";
+ assert(config.set(edit));
+ assert(controller.begin());
+ edit["timeZone"] = "";
+ assert(config.set(edit));
+ controller.tick();
+ assert(messages.size() == 3);
+
+ controller.setStatusCallback(nullptr);
+ edit["timeZone"] = "UTC0";
+ assert(config.set(edit));
+ assert(controller.begin());
+ edit["timeZone"] = "";
+ assert(config.set(edit));
+ assert(!controller.begin());
+ assert(messages.size() == 3);
+}
+
+// Exercise controller diagnostics and clock rendering against the real time service.
 int main(){
+ checkControllerStatus();
  using Type=MDS_ConfigType;using Access=MDS_ConfigAccess;
  const MDS_ConfigSetting settings[]={
   {"timeOffset",Type::Signed,Access::ReadWrite,false,nullptr,0,0,0},
@@ -45,7 +101,7 @@ int main(){
   {"ntpInterval",Type::Unsigned,Access::ReadWrite,true,nullptr,3600,60,86400}
  };
  MDS_Config config;assert(config.setSettings(settings));TwoWire wire;MatrixDriver matrix(wire,21,4);MDS_Display oled;MDS_Time time;
- TimeController controller(time,config,oled);assert(controller.begin(true));
+ TimeController controller(time,config);assert(controller.begin());
  Display mainDisplay(matrix);assert(mainDisplay.begin());int beforeClock=wire.calls;Clock display(time,config,mainDisplay.commands(),oled);assert(display.begin());assert(wire.calls==beforeClock);assert(mainDisplay.tick());assert(matrix.ready()&&matrix.globalCurrent()==4);
  bool networkReady = false;
  time.setNetworkReadyCallback([&]() {
