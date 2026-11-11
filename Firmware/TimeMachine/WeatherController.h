@@ -28,10 +28,10 @@ public:
 	// Apply current settings and service weather retrieval without blocking the display.
 	void tick(bool networkReady, bool clockReady);
 
-	// Called after a successful weather update to replace the configured timezone.
+private:
+	// Replace the configured timezone after the service accepts a new cached sample.
 	void applyTimezone();
 
-private:
 	MDS_Weather& weather_;
 	MDS_Config& config_;
 };

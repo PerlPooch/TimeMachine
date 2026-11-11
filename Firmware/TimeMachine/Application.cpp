@@ -268,13 +268,9 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 	});
 	timeController_.begin(oledReady_);
 
-	weather_.setStatusCallback([this](const String& message) {
+	// Keep weather diagnostics separate from the controller's timezone updates.
+	weather_.setStatusCallback([](const String& message) {
 		Serial.println(message);
-
-		// Apply timezone only after the weather service accepts a successful result.
-		if (message == "Weather: updated") {
-			weatherController_.applyTimezone();
-		}
 	});
 
 	weatherController_.tick(wifi_.ready(), time_.valid());

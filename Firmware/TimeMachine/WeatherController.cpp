@@ -46,5 +46,17 @@ void WeatherController::tick(bool networkReady, bool clockReady) {
 	options.intervalSeconds = config_.get("weatherInterval").as<uint32_t>();
 
 	weather_.begin(options);
+
+	// Compare the accepted cache around tick(), independently of diagnostic callbacks.
+	const bool hadSample = weather_.available();
+	const time_t lastSuccess = weather_.lastSuccessUtc();
+	const int32_t previousOffset = weather_.sample().timezoneOffsetSeconds;
+
 	weather_.tick(networkReady, clockReady);
+
+	// Also detect offset changes when successive results share the same UTC second.
+	if (weather_.available() && (!hadSample || weather_.lastSuccessUtc() != lastSuccess
+		|| weather_.sample().timezoneOffsetSeconds != previousOffset)) {
+		applyTimezone();
+	}
 }
