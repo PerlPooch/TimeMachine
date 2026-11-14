@@ -165,8 +165,8 @@ public:
 	// Fade every fitted segment/indicator up, hold, then fade down.
 	// Retain target edits made during the test and restore them on completion/cancel.
 	static constexpr uint32_t LampFadeMs = 750;
-	static constexpr uint32_t LampHoldMs = 2000;
-	static constexpr uint32_t LampDurationMs = 2 * LampFadeMs + LampHoldMs;
+	static constexpr uint32_t LampHoldMs = 4000;
+	static constexpr uint32_t LampDurationMs = 2 * LampFadeMs + LampHoldMs + 1000;
 	bool lampTest();
 	bool cancelLampTest();
 
