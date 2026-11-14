@@ -67,6 +67,13 @@ int main() {
  assert(ESP.restarts == 0);
 
  server.chunk(UPLOAD_FILE_START);
+ // Upload start must replace the startup overlay before any loop or firmware write.
+ Display renderer(matrix);
+ Display::Frame uploadFrame;
+ renderer.drawText(uploadFrame, "UPD");
+ for (size_t channel = 0; channel < DisplayMap::ChannelSpan; ++channel) {
+  assert(matrix.brightness(channel) == uploadFrame.channels[channel]);
+ }
  server.chunk(UPLOAD_FILE_WRITE, 16);
  server.chunk(UPLOAD_FILE_ABORTED);
  server.request("/upload", {}, HTTP_POST);
@@ -83,7 +90,8 @@ int main() {
  app.tick();
  assert(ESP.restarts == 0);
 
- // Success sends its response before Application consumes the pending reboot.
+ // Keep the response socket alive for one second, including across millis rollover.
+ nowMillis = UINT32_MAX - 500;
  Update.endOK = true;
  server.chunk(UPLOAD_FILE_START);
  server.chunk(UPLOAD_FILE_WRITE, 16);
@@ -92,6 +100,12 @@ int main() {
  assert(server.code == 200 && Update.commits == 1);
  assert(ESP.restarts == 0 && app.state() != Application::State::Rebooting);
  assert(LittleFS.files == savedFiles);
+ app.tick();
+ assert(ESP.restarts == 0 && server.stops == 0);
+ nowMillis += 999;
+ app.tick();
+ assert(ESP.restarts == 0 && server.stops == 0);
+ ++nowMillis;
  app.tick();
  assert(ESP.restarts == 1 && app.state() == Application::State::Rebooting);
  assert(server.stops == 1);

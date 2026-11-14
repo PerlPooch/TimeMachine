@@ -22,6 +22,7 @@
 #include <freertos/task.h>
 #include <LittleFS.h>
 #include <cassert>
+#include <cstdio>
 #include <algorithm>
 #include <type_traits>
 #include "fonts/SixteenSegmentAlphanumeric.h"
@@ -36,9 +37,27 @@ static_assert(!std::is_default_constructible<Application>::value);
 static_assert(!std::is_copy_constructible<Application>::value);
 static_assert(!std::is_move_constructible<Application>::value);
 void synchronizedTick(Application& app){timeval event{};event.tv_sec=utc;assert(sntp.callback);sntp.callback(&event);app.tick();}
-void expectMessage(MatrixDriver& matrix,const char* text){
- for(int index=0;index<13;++index){auto digit=DisplayMap::Digits[index];uint16_t mask=digit.segmentCount==16?SixteenSegment::Fonts::glyph(text[index]):SevenSegment::Fonts::glyph(text[index]);for(int segment=0;segment<digit.segmentCount;++segment)assert(matrix.brightness(digit.firstAddress+segment)==((mask&(1<<segment))?255:0));}
- for(const auto& discrete:DisplayMap::DiscreteMap)assert(matrix.brightness(discrete.address)==0);
+// Check text segments and report the exact mismatch before failing an assertion.
+void expectMessage(MatrixDriver& matrix, const char* text) {
+ for (int index = 0; index < 13; ++index) {
+  const auto digit = DisplayMap::Digits[index];
+  const uint16_t mask = digit.segmentCount == 16
+   ? SixteenSegment::Fonts::glyph(text[index]) : SevenSegment::Fonts::glyph(text[index]);
+
+  for (int segment = 0; segment < digit.segmentCount; ++segment) {
+   const uint8_t expected = (mask & (1 << segment)) ? 255 : 0;
+   const uint8_t actual = matrix.brightness(digit.firstAddress + segment);
+   if (actual != expected) {
+    std::fprintf(stderr, "Text '%s': digit %d, segment %d, expected %u, got %u\n",
+     text, index, segment, unsigned(expected), unsigned(actual));
+   }
+   assert(actual == expected);
+  }
+ }
+
+ for (const auto& discrete : DisplayMap::DiscreteMap) {
+  assert(matrix.brightness(discrete.address) == 0);
+ }
 }
 int main(){
  // Distinguish active provisioning from a saved-network attempt in startup diagnostics.
@@ -133,7 +152,18 @@ int main(){
   for(const auto& discrete:DisplayMap::DiscreteMap)assert(matrix.brightness(discrete.address)==255);
   server.request("/api/display",{{"message","BOOT123"}});assert(server.code==202);
   nowMillis+=Display::LampHoldMs;app.tick();assert(matrix.brightness(DisplayMap::discreteAddress(DisplayMap::DiscreteIndex::AM))==255);
-  nowMillis+=Display::LampFadeMs;app.tick();expectMessage(matrix,"BOOT123      ");assert(app.state()==Application::State::Running);
+  nowMillis += Display::LampFadeMs;
+  app.tick();
+  assert(app.state() == Application::State::SegmentTest);
+  for (size_t channel = 0; channel < DisplayMap::ChannelSpan; ++channel) {
+   assert(matrix.brightness(channel) == 0);
+  }
+
+  // The startup overlay includes a blank pause after fading down.
+  nowMillis += Display::LampDurationMs - 2 * Display::LampFadeMs - Display::LampHoldMs;
+  app.tick();
+  expectMessage(matrix, "BOOT123      ");
+  assert(app.state() == Application::State::Running);
   server.request("/api/display",{{"message",""}});app.tick();
   server.request("/api/display",{{"message","WAI123"}});assert(server.code==202);app.tick();expectMessage(matrix,"WAI123       ");
   server.request("/api/display",{{"message",""}});assert(server.code==202);app.tick();expectMessage(matrix,"-------------");

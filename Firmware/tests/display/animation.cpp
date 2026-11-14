@@ -59,9 +59,19 @@ int main(){
  now=start+Display::LampHoldMs;assert(display.tick());allLamp(matrix,255);
  now=start+Display::LampHoldMs+Display::LampFadeMs/2;assert(display.tick());allLamp(matrix,128);
  now=start+Display::LampHoldMs+Display::LampFadeMs-1;assert(display.tick()&&display.segmentTesting());allLamp(matrix,0);
- now=start+Display::LampHoldMs+Display::LampFadeMs;assert(display.tick()&&!display.segmentTesting());assert(matrix.brightness(0)==64&&matrix.brightness(1)==32&&matrix.brightness(DisplayMap::discreteAddress(DisplayMap::DiscreteIndex::PM))==92);
+ // Fading down is followed by a blank pause before restoring the held content.
+ now = start + Display::LampHoldMs + Display::LampFadeMs;
+ assert(display.tick() && display.segmentTesting());
+ allLamp(matrix, 0);
+ now = start + Display::LampDurationMs - Display::LampFadeMs - 1;
+ assert(display.tick() && display.segmentTesting());
+ allLamp(matrix, 0);
+ ++now;
+ assert(display.tick() && !display.segmentTesting());
+ assert(matrix.brightness(0) == 64 && matrix.brightness(1) == 32
+  && matrix.brightness(DisplayMap::discreteAddress(DisplayMap::DiscreteIndex::PM)) == 92);
  assert(display.lampTest());now+=Display::LampFadeMs;assert(display.tick());allLamp(matrix,255);assert(display.cancelLampTest());assert(!display.segmentTesting()&&matrix.brightness(0)==64);
  assert(matrix.setBrightness(2,73));assert(display.lampTest());assert(display.cancelLampTest());assert(matrix.brightness(2)==73);
  assert(display.lampTest());wire.failAt=wire.calls+1;now+=175;assert(!display.tick()&&!matrix.ready()&&!display.segmentTesting());calls=wire.calls;now+=1000;assert(!display.tick()&&wire.calls==calls);
- puts("PASS: target/output buffering, independent segment intensities, gamma once, mid-fade edits, smooth fades/reversal, zero duration, rollover, mapped lamp coverage, full one-second hold, restoration/cancellation, raw diagnostics, and I2C failure.");
+ puts("PASS: target/output buffering, independent segment intensities, gamma once, mid-fade edits, smooth fades/reversal, zero duration, rollover, mapped lamp coverage, configured hold and blank pause, restoration/cancellation, raw diagnostics, and I2C failure.");
 }
