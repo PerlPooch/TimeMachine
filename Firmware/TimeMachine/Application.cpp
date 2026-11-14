@@ -264,8 +264,21 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 		// Report listener transitions without managing them in Application.
 		Serial.println(message);
 	});
+	http_.setStateChangeCallback([this](MDS_HTTP::State, MDS_HTTP::State current) {
+		// Render immediately: synchronous upload handling pauses the display loop.
+		if (current != MDS_HTTP::State::Uploading) {
+			return;
+		}
+
+		display_.cancelLampTest();
+		display_.setColonsBlink(false);
+		if (!display_.setMessage("    UPLOAD")) {
+			Serial.println("Upload: cannot show display message");
+		}
+	});
 	http_.setUploadCompleteCallback([this]() {
-		// Reboot from the application loop after HTTP finishes sending its response.
+		// Allow queued TCP response bytes to reach the client before shutting down Wi-Fi.
+		uploadCompletedAt_ = millis();
 		uploadRebootPending_ = true;
 	});
 	http_.begin();
@@ -762,6 +775,16 @@ void Application::tick() {
 			break;
 	}
 
+	// Leave the network stack alive briefly so curl can receive the upload response.
+	if (uploadRebootPending_) {
+		if (uint32_t(millis() - uploadCompletedAt_) >= UploadRebootDelayMs) {
+			http_.stop();
+			transitionTo(State::Rebooting);
+		}
+
+		return;
+	}
+
 	serviceButton();
 	// ResetFailed polls only the button; reset/reboot paths do no further work.
 	if (state_ == State::Resetting || state_ == State::ResetFailed || state_ == State::Rebooting) {
@@ -779,8 +802,7 @@ void Application::tick() {
 		http_.tick();
 
 		if (uploadRebootPending_) {
-			http_.stop();
-			transitionTo(State::Rebooting);
+			// Sending a response queues TCP bytes; keep the socket open for the grace period.
 			return;
 		}
 

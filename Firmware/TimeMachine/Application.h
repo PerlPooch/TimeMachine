@@ -96,6 +96,8 @@ private:
 	Display::Frame resetFrame_; // Output to restore if the reset is canceled.
 	bool oledReady_ = false;
 	bool uploadRebootPending_ = false;
+	static constexpr uint32_t UploadRebootDelayMs = 1000;
+	uint32_t uploadCompletedAt_ = 0;
 
 	// Port A / J2: RX GPIO0, TX GPIO1; USB CDC remains the debug console.
 	HardwareSerial serialA_{1};
