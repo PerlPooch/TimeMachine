@@ -218,6 +218,7 @@ def publish_download(tree, image, destination, backup, work):
 
 
 def download(args, partition, mkfs, esptool):
+    """Unpack a checked image and discard the raw copy only after complete success."""
     destination = args.directory.expanduser().absolute()
     backup = (args.image or destination.with_name(destination.name + ".bin")).expanduser().absolute()
 
@@ -258,14 +259,22 @@ def download(args, partition, mkfs, esptool):
         publish_download(tree, image, destination, backup, work)
 
     print(f"Filesystem: {destination}")
-    print(f"Raw backup: {backup}")
     reset_board(esptool, args)
+    if args.keep_image:
+        print(f"Raw backup: {backup}")
+    else:
+        backup.unlink()
 
 
 def upload(args, partition, mkfs, esptool):
+    """Upload a packed tree, optionally retaining its sibling raw image."""
     source = args.directory.expanduser().resolve()
     if not source.is_dir():
         raise ValueError(f"Not a filesystem directory: {source}")
+
+    backup = source.with_name(source.name + ".bin")
+    if not args.pack_only and backup.is_dir() and not backup.is_symlink():
+        raise ValueError(f"Raw image path is a directory: {backup}")
 
     output = args.pack_only.expanduser().absolute() if args.pack_only else None
     if output:
@@ -280,8 +289,12 @@ def upload(args, partition, mkfs, esptool):
             raise ValueError("The temporary image must be outside the filesystem source folder")
         image = work / "littlefs.bin"
 
+        # Exclude dotfiles and dot-directories at every depth without changing the source.
+        packed_source = work / "files"
+        shutil.copytree(source, packed_source, ignore=shutil.ignore_patterns(".*"))
+
         # Pack before contacting the board, so oversized input cannot reach flash.
-        run_mkfs([mkfs, "-c", source, "-a", *geometry(partition), image])
+        run_mkfs([mkfs, "-c", packed_source, *geometry(partition), image])
         image_size(image, partition)
 
         if output:
@@ -297,12 +310,22 @@ def upload(args, partition, mkfs, esptool):
                           hex(partition.offset), image))
         print("Filesystem uploaded. Firmware and Wi-Fi NVS were not replaced.")
 
-    reset_board(esptool, args)
+        reset_board(esptool, args)
+        if args.keep_image:
+            # Replace a previous raw image only after upload and reset both succeed.
+            with tempfile.TemporaryDirectory(prefix=".lfs-image-", dir=backup.parent) as image_work:
+                replacement = Path(image_work) / "littlefs.bin"
+                copy_new(image, replacement)
+                os.replace(replacement, backup)
+            print(f"Packed image: {backup}")
+        else:
+            backup.unlink(missing_ok=True)
 
 
 def main(operation):
+    """Parse transfer options and report failures without discarding recovery images."""
     parser = argparse.ArgumentParser(description=(
-        "Download and unpack the board's LittleFS, retaining a raw backup."
+        "Download and unpack the board's LittleFS."
         if operation == "download" else
         "Pack a filesystem tree and replace the board's LittleFS with it."
     ))
@@ -316,6 +339,8 @@ def main(operation):
     parser.add_argument("--partition", default="spiffs", help="Filesystem partition label (default: spiffs)")
     parser.add_argument("--mklittlefs", help="Path to mklittlefs (auto-detected by default)")
     parser.add_argument("--esptool", help="Path to esptool 5 or newer (auto-detected by default)")
+    parser.add_argument("--keep-image", action="store_true",
+                        help="Keep the raw DIRECTORY.bin image after a successful board transfer")
     if operation == "download":
         parser.add_argument("--image", type=Path, help="Raw backup path (default: DIRECTORY.bin)")
     else:
