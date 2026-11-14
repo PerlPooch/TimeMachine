@@ -15,6 +15,7 @@
 """Exercise the transfer tools with real LittleFS images and a simulated board."""
 
 import hashlib
+from importlib import import_module
 import json
 import os
 from pathlib import Path
@@ -29,13 +30,13 @@ from unittest.mock import patch
 
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
-from lfs_common import find_tool, publish_download
+lfs = import_module("lfs-common")
 
 
 class TransferTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.mkfs = find_tool("mklittlefs", os.environ.get("MKLITTLEFS"))
+        cls.mkfs = lfs.find_tool("mklittlefs", os.environ.get("MKLITTLEFS"))
 
     def setUp(self):
         """Prepare visible files and hidden entries in a simulated board filesystem."""
@@ -249,9 +250,9 @@ else:
         tree.mkdir(parents=True)
         (tree / "new").write_bytes(b"new content")
 
-        with patch("lfs_common.os.replace", side_effect=OSError("simulated publication failure")):
+        with patch.object(lfs.os, "replace", side_effect=OSError("simulated publication failure")):
             with self.assertRaises(OSError):
-                publish_download(tree, self.image, destination, backup, staging)
+                lfs.publish_download(tree, self.image, destination, backup, staging)
 
         self.assert_tree(destination, {"keep": b"original"})
         self.assertEqual(backup.read_bytes(), b"original backup")

@@ -15,7 +15,10 @@
 
 """Fetch and unpack the Time Machine LittleFS partition."""
 
-from lfs_common import main
+from importlib import import_module
+
+# Load the shared helper by filename; hyphens cannot appear in a Python import statement.
+main = import_module("lfs-common").main
 
 
 if __name__ == "__main__":

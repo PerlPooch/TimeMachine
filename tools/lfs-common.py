@@ -1,5 +1,5 @@
 # ===========================================================================
-# File:      tools/lfs_common.py
+# File:      tools/lfs-common.py
 # Firmware:  0.5.1
 # Git base:  dafb18db29e0
 #
