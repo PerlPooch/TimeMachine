@@ -1,0 +1,76 @@
+#!/bin/bash
+
+set -uo pipefail
+
+TOOLS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+FIRMWARE="$TOOLS_DIR/../Firmware/bin/TimeMachine.ino.bin"
+
+# Reject failed HTTP requests and responses without a usable firmware version.
+read_version() {
+    curl --silent --show-error --fail-with-body \
+        --connect-timeout 3 --max-time 5 "http://$1/api/config" \
+        | jq -er '.version | select(type == "string" and length > 0)'
+}
+
+# Upload one board and poll for recovery; callers aggregate failures across boards.
+upload_board() {
+    local host=$1 current_version new_version attempt
+
+    printf '\nBoard: %s\n' "$host"
+    if ! current_version=$(read_version "$host"); then
+        printf '%s: cannot read current firmware version; skipping upload.\n' "$host" >&2
+        return 1
+    fi
+    printf 'Current version: %s\n' "$current_version"
+
+    if ! curl --silent --show-error --fail-with-body \
+        --connect-timeout 5 --max-time 180 \
+        -F "firmware=@$FIRMWARE" "http://$host/upload"; then
+        printf '%s: firmware upload failed.\n' "$host" >&2
+        return 1
+    fi
+
+    # Allow the firmware's one-second response grace period before checking recovery.
+    sleep 2
+    for ((attempt = 1; attempt <= 30; attempt++)); do
+        if new_version=$(read_version "$host" 2>/dev/null); then
+            printf 'New version: %s\n' "$new_version"
+            return 0
+        fi
+        if ((attempt < 30)); then
+            sleep 2
+        fi
+    done
+
+    printf '%s: upload accepted, but the board did not recover after 30 checks.\n' "$host" >&2
+    return 1
+}
+
+# Validate local prerequisites before contacting any board.
+main() {
+    local dependency host status=0
+
+    if (($# == 0)); then
+        printf 'Usage: %s BOARD_IP [BOARD_IP ...]\n' "$0" >&2
+        return 2
+    fi
+    for dependency in curl jq; do
+        if ! command -v "$dependency" >/dev/null; then
+            printf 'Required command not found: %s\n' "$dependency" >&2
+            return 2
+        fi
+    done
+    if [[ ! -f "$FIRMWARE" || ! -r "$FIRMWARE" || ! -s "$FIRMWARE" ]]; then
+        printf 'Firmware binary is missing, unreadable, or empty: %s\nRun tools/build first.\n' "$FIRMWARE" >&2
+        return 2
+    fi
+
+    for host in "$@"; do
+        if ! upload_board "$host"; then
+            status=1
+        fi
+    done
+    return "$status"
+}
+
+main "$@"

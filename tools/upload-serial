@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -uo pipefail
+
+TOOLS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+BUILD_DIR="$TOOLS_DIR/../Firmware/bin"
+SKETCH="$TOOLS_DIR/../Firmware/TimeMachine"
+CLI=${ARDUINO_CLI:-/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli}
+CONFIG=${ARDUINO_CLI_CONFIG:-$HOME/.arduinoIDE/arduino-cli.yaml}
+FQBN='esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc,PartitionScheme=tm_ota'
+
+# Upload the existing build through Arduino's serial recipe and aggregate board failures.
+main() {
+    local artifact port status=0
+
+    if (($# == 0)); then
+        printf 'Usage: %s SERIAL_PORT [SERIAL_PORT ...]\n' "$0" >&2
+        return 2
+    fi
+    if [[ "$1" == --help || "$1" == -h ]]; then
+        printf 'Usage: %s SERIAL_PORT [SERIAL_PORT ...]\n' "$0"
+        printf 'Upload the existing tools/build output over USB serial; no compilation is performed.\n'
+        return 0
+    fi
+    if ! command -v "$CLI" >/dev/null; then
+        printf 'Arduino CLI not found: %s\nSet ARDUINO_CLI to its executable path.\n' "$CLI" >&2
+        return 2
+    fi
+    if [[ ! -f "$CONFIG" || ! -r "$CONFIG" ]]; then
+        printf 'Arduino CLI configuration is missing or unreadable: %s\n' "$CONFIG" >&2
+        return 2
+    fi
+    for artifact in TimeMachine.ino.bin TimeMachine.ino.bootloader.bin TimeMachine.ino.partitions.bin; do
+        if [[ ! -f "$BUILD_DIR/$artifact" || ! -r "$BUILD_DIR/$artifact" || ! -s "$BUILD_DIR/$artifact" ]]; then
+            printf 'Build artifact is missing, unreadable, or empty: %s\nRun tools/build first.\n' "$BUILD_DIR/$artifact" >&2
+            return 2
+        fi
+    done
+
+    for port in "$@"; do
+        printf '\nUploading over serial: %s\n' "$port"
+        # The normal recipe resets OTA selection along with writing the application.
+        if ! "$CLI" upload --config-file "$CONFIG" --fqbn "$FQBN" \
+            --protocol serial --port "$port" --input-dir "$BUILD_DIR" "$SKETCH"; then
+            printf '%s: serial firmware upload failed.\n' "$port" >&2
+            status=1
+        fi
+    done
+    return "$status"
+}
+
+main "$@"

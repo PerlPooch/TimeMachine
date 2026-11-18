@@ -1,0 +1,8 @@
+#!/bin/bash
+
+"/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli" compile \
+  --config-file "$HOME/.arduinoIDE/arduino-cli.yaml" \
+  --fqbn 'esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc,PartitionScheme=tm_ota' \
+  --build-path "/Volumes/Eight/Documents/Projects-Git/Time Machine/Firmware/bin" \
+  "/Volumes/Eight/Documents/Projects-Git/Time Machine/Firmware/TimeMachine"
+

@@ -1,5 +1,35 @@
 # LittleFS transfer tools
 
+## Firmware build and upload
+
+From the project root, build the application and upload it to one or more boards:
+
+```sh
+tools/build && tools/upload 192.168.0.120 192.168.0.121
+```
+
+`upload` requires `curl`, `jq`, and the application binary at
+`Firmware/bin/TimeMachine.ino.bin`. It reads the current version before uploading,
+then polls `/api/config` up to 30 times for recovery after the reboot. Every HTTP
+request has connection and overall timeouts. A failed board is reported and the
+remaining boards are still processed; the command exits nonzero if any board fails.
+
+For USB serial, close the Serial Monitor and use the companion command:
+
+```sh
+tools/build && tools/upload-serial /dev/cu.usbmodemYOUR_PORT
+```
+
+Additional port arguments upload the same build to more boards. The command uses
+Arduino CLI's normal serial upload/reset recipe with the project's OTA layout,
+including the bootloader, partition table, OTA boot metadata, and application.
+It uses existing files in `Firmware/bin` and does not compile. Failed ports are
+reported, remaining ports are processed, and any failure makes the command exit
+nonzero. For `upload-serial`, `ARDUINO_CLI` and `ARDUINO_CLI_CONFIG` override the
+executable and configuration paths; their defaults match `tools/build`.
+
+## LittleFS download and upload
+
 `lfs-download` reads and unpacks the board's filesystem. `lfs-upload` packs a
 local filesystem folder and writes it back. Both are for this project's
 4 MiB ESP32-C6 layout.
