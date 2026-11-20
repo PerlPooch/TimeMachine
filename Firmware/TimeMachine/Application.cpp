@@ -265,8 +265,8 @@ bool Application::begin(const char* version, bool defaultPrimary, bool busReady,
 		Serial.println(message);
 	});
 	http_.setStateChangeCallback([this](MDS_HTTP::State, MDS_HTTP::State current) {
-		// Render immediately: synchronous upload handling pauses the display loop.
-		if (current != MDS_HTTP::State::Uploading) {
+		// Show the held update message only for firmware, which reboots after success.
+		if (current != MDS_HTTP::State::Uploading || http_.server().uri() != "/upload") {
 			return;
 		}
 

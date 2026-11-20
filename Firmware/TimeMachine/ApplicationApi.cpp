@@ -18,6 +18,7 @@
 #include "SerialProtocol.h"
 #include "ClockCalendar.h"
 #include <LittleFS.h>
+#include <MDS_HTTP_FS.h>
 #include <string.h>
 #include <utility>
 
@@ -51,6 +52,9 @@ void ApplicationApi::begin() {
 		if (weather_) {
 			on("/api/weather", HTTP_GET, [this]() { weatherRequest(); });
 		}
+
+		// Stream website uploads into the same directory used by the static routes.
+		http_.addUpload("/upload-file", std::unique_ptr<MDS_HTTPUpload>(new MDS_HTTP_FS(LittleFS, "/www")));
 
 		// Register specific routes before the website's catch-all path.
 		server().serveStatic("/assets/", LittleFS, "/www/assets/");
