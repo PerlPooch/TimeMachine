@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      tests/application/upload.cpp
- * Firmware:  0.6.0
- * Git base:  4967da86d1b1
+ * Firmware:  0.7.0
+ * Git base:  b4e2060f2874
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -43,7 +43,7 @@ time_t fakeTime(time_t* value) {
  return utc;
 }
 
-// Verify the actual upload route requests reboot only after a successful response.
+// Verify that website uploads stay live and firmware alone requests a reboot.
 int main() {
  TwoWire wire;
  MatrixDriver matrix(wire, 21);
@@ -56,8 +56,63 @@ int main() {
 
  server.request("/upload");
  assert(server.code == 200 && server.body.find("multipart/form-data") != String::npos);
+ server.request("/upload-file");
+ assert(server.code == 200 && server.contentType == "text/html; charset=utf-8");
+ assert(server.body.find("Destination path") != String::npos);
+
+ // A board without index.html returns 404 even if the old index.htm exists.
+ LittleFS.files["/www/index.htm"] = "old default";
+ server.request("/");
+ assert(server.code == 404);
+
  server.request("/api/config", {{"name", "Keep My Settings"}});
  assert(server.code == 200);
+ const auto savedConfig = LittleFS.files.at("/config.json");
+
+ // Website uploads preserve the display and publish only after the POST callback.
+ Display renderer(matrix);
+ const auto beforeWebsiteUpload = renderer.frame();
+ server.incomingUpload.name = "file";
+ server.incomingUpload.filename = "assets/style.css";
+ server.incomingUpload.buf[0] = 'x';
+ server.chunk(UPLOAD_FILE_START, 0, "/upload-file");
+ server.chunk(UPLOAD_FILE_WRITE, 1, "/upload-file");
+ server.chunk(UPLOAD_FILE_END, 1, "/upload-file");
+ assert(!LittleFS.exists("/www/assets/style.css"));
+ server.request("/upload-file", {}, HTTP_POST);
+ assert(server.code == 200 && LittleFS.files.at("/www/assets/style.css") == "x");
+ assert(LittleFS.files.at("/config.json") == savedConfig);
+ assert(Update.commits == 0 && ESP.restarts == 0);
+ for (size_t channel = 0; channel < DisplayMap::ChannelSpan; ++channel) {
+  assert(matrix.brightness(channel) == beforeWebsiteUpload.channels[channel]);
+ }
+
+ // The root route discovers index.html uploaded after the listener started.
+ server.incomingUpload.filename = "index.html";
+ server.incomingUpload.buf[0] = 'H';
+ server.chunk(UPLOAD_FILE_START, 0, "/upload-file");
+ server.chunk(UPLOAD_FILE_WRITE, 1, "/upload-file");
+ server.chunk(UPLOAD_FILE_END, 1, "/upload-file");
+ server.request("/upload-file", {}, HTTP_POST);
+ assert(server.code == 200);
+ server.request("/");
+ assert(server.code == 200 && server.contentType == "text/html" && server.body == "H");
+
+ // Reject a path outside /www and leave the previous asset intact on abort.
+ server.incomingUpload.filename = "../config.json";
+ server.chunk(UPLOAD_FILE_START, 0, "/upload-file");
+ server.request("/upload-file", {}, HTTP_POST);
+ assert(server.code == 500 && LittleFS.files.at("/config.json") == savedConfig);
+
+ server.incomingUpload.filename = "assets/style.css";
+ server.incomingUpload.buf[0] = 'y';
+ server.chunk(UPLOAD_FILE_START, 0, "/upload-file");
+ server.chunk(UPLOAD_FILE_WRITE, 1, "/upload-file");
+ server.chunk(UPLOAD_FILE_ABORTED, 0, "/upload-file");
+ server.request("/upload-file", {}, HTTP_POST);
+ assert(server.code == 500 && LittleFS.files.at("/www/assets/style.css") == "x");
+ assert(!LittleFS.exists("/www/.mds-http-upload.tmp"));
+ server.incomingUpload.name = "firmware";
  const auto savedFiles = LittleFS.files;
 
  // Missing, aborted, and invalid images must leave the application running.
@@ -68,9 +123,8 @@ int main() {
 
  server.chunk(UPLOAD_FILE_START);
  // Upload start must replace the startup overlay before any loop or firmware write.
- Display renderer(matrix);
  Display::Frame uploadFrame;
- renderer.drawText(uploadFrame, "UPD");
+ renderer.drawText(uploadFrame, "    UPLOAD");
  for (size_t channel = 0; channel < DisplayMap::ChannelSpan; ++channel) {
   assert(matrix.brightness(channel) == uploadFrame.channels[channel]);
  }
@@ -112,5 +166,5 @@ int main() {
  app.tick();
  assert(ESP.restarts == 1 && LittleFS.files == savedFiles);
 
- puts("PASS: browser upload route, response-before-reboot, failure/abort rejection, single reboot, and settings preservation.");
+ puts("PASS: browser forms, live index alias, website publishing and abort, settings and display preservation, firmware response-before-reboot, and single reboot.");
 }

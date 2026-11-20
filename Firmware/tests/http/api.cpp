@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      tests/http/api.cpp
- * Firmware:  0.6.0
- * Git base:  4967da86d1b1
+ * Firmware:  0.7.0
+ * Git base:  b4e2060f2874
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -44,9 +44,11 @@ int main(){
  });
  ApplicationApi api(http,config,matrix,display.commands());auto& server=http.server();
  assert(server.port==80&&!http.running());http.tick();assert(server.ticks==0);
- api.begin();api.begin();assert(server.registrations==4);
- // Website mappings stay within /www and no longer expose configuration at root.
- assert(server.handlers.count({"/", HTTP_GET}) == 0);
+ api.begin();api.begin();assert(server.registrations==7);
+ // The exact home route overrides the static directory handler's default index.
+ assert(server.handlers.count({"/", HTTP_GET}) == 1);
+ assert(server.handlers.count({"/upload-file", HTTP_GET}) == 1);
+ assert(server.handlers.count({"/upload-file", HTTP_POST}) == 1);
  assert(server.staticRoutes.size() == 2);
  assert(server.staticRoutes[0].uri == "/assets/" && server.staticRoutes[0].path == "/www/assets/");
  assert(server.staticRoutes[1].uri == "/" && server.staticRoutes[1].path == "/www/");

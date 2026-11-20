@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      tests/application/lifecycle.cpp
- * Firmware:  0.6.0
- * Git base:  4967da86d1b1
+ * Firmware:  0.7.0
+ * Git base:  b4e2060f2874
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -143,7 +143,7 @@ int main(){
   server.request("/api/config",{{"version","old"}});assert(server.code==403&&!LittleFS.exists("/config.json"));
   server.request("/api/config",{{"timeOffset","+5d"}});assert(server.code==200&&!LittleFS.exists("/config.json"));
   server.request("/api/config",{{"timeOffset","1970-01-01T00:00:00Z"}});assert(server.code==503);
-  assert(server.registrations==7&&server.starts==1&&wifi.begins==1);
+  assert(server.registrations==10&&server.starts==1&&wifi.begins==1);
   assert(wifi.policy==MDS_WiFi::ConnectionPolicy::RetrySavedNetworkAsync);
   int calls=wire.calls;app.tick();assert(wire.calls==calls);
   // The API and services remain live while the mode waits for the startup lamp test.

@@ -1,0 +1,66 @@
+#line 1 "/Volumes/Eight/Documents/Projects-Git/Time Machine/Firmware/TimeMachine/WeatherController.cpp"
+/*
+ * ===========================================================================
+ * File:      TimeMachine/WeatherController.cpp
+ * Firmware:  0.6.0
+ * Git base:  4967da86d1b1
+ *
+ * Copyright (c) 2026 Marc D. Spencer.
+ * All Rights Reserved under the applicable license.
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ * ===========================================================================
+ */
+
+#include "WeatherController.h"
+#include <stdio.h>
+
+// Register one handler for accepted samples, independently of diagnostic callbacks.
+WeatherController::WeatherController(MDS_Weather& weather, MDS_Config& config)
+	: weather_(weather), config_(config) {
+	weather_.setUpdateCallback([this](const MDS_Weather::Sample& sample) {
+		// Use the borrowed sample immediately without re-entering Weather.
+		applyTimezone(sample);
+	});
+}
+
+// Remove the callback while the borrowed weather service is still alive.
+WeatherController::~WeatherController() {
+	weather_.setUpdateCallback(nullptr);
+}
+
+// Replace runtime timeZone from a successful weather result; normal time servicing applies it.
+void WeatherController::applyTimezone(const MDS_Weather::Sample& sample) {
+	const int32_t offset = sample.timezoneOffsetSeconds;
+	const uint32_t seconds = offset < 0 ? uint32_t(-offset) : uint32_t(offset);
+
+	char zone[20];
+
+	// POSIX timezone signs are the reverse of UTC offsets from OpenWeather.
+	snprintf(zone, sizeof(zone), "UTC%c%02lu:%02lu:%02lu", offset < 0 ? '+' : '-',
+		static_cast<unsigned long>(seconds / 3600), static_cast<unsigned long>((seconds / 60) % 60),
+		static_cast<unsigned long>(seconds % 60));
+
+	JsonDocument update;
+	update["timeZone"] = zone;
+
+	if (!config_.set(update)) {
+		Serial.println(config_.lastError());
+	}
+}
+
+// Apply current weather settings and service retrieval when network and time are ready.
+void WeatherController::tick() {
+	MDS_Weather::Options options;
+	options.apiKey = config_.get("owAppKey").as<const char*>();
+	options.latitude = config_.get("latitude").as<const char*>();
+	options.longitude = config_.get("longitude").as<const char*>();
+	options.intervalSeconds = config_.get("weatherInterval").as<uint32_t>();
+
+	weather_.begin(options);
+
+	weather_.tick();
+}

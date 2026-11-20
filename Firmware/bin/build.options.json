@@ -1,0 +1,10 @@
+{
+  "additionalFiles": "../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../../..,../../..",
+  "builtInLibrariesFolders": "/Users/mspencer/Library/Arduino15/libraries",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "",
+  "fqbn": "esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc,PartitionScheme=tm_ota",
+  "hardwareFolders": "/Users/mspencer/Library/Arduino15/packages/esp32/hardware/esp32/3.3.12,/Users/mspencer/Library/Arduino15/packages/esp32/hardware/esp32/3.3.12",
+  "otherLibrariesFolders": "/Users/mspencer/Documents/Arduino/libraries",
+  "sketchLocation": "/Volumes/Eight/Documents/Projects-Git/Time Machine/Firmware/TimeMachine"
+}

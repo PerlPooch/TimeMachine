@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      tests/application/host/LittleFS.h
- * Firmware:  0.6.0
- * Git base:  4967da86d1b1
+ * Firmware:  0.7.0
+ * Git base:  b4e2060f2874
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -15,8 +15,9 @@
  */
 
 #pragma once
-#include "Arduino.h"
+#include <Arduino.h>
 #include <map>
+#include <set>
 #include <algorithm>
 #include <cstring>
 class File {
@@ -35,20 +36,29 @@ public:
  size_t write(uint8_t byte){return write(&byte,1);}
  size_t write(const uint8_t* buffer,size_t count){if(!data_||!writable_)return 0;size_t n=shortWrite_&&count?count-1:count;data_->append(reinterpret_cast<const char*>(buffer),n);return n;}
  void flush(){}
- void close(){}
+ // Release the handle while preserving its stored data.
+ void close() { data_ = nullptr; }
+
+ // This mock only opens regular files.
+ bool isDirectory() const { return false; }
 };
 class FakeFS {
 public:
  std::map<std::string,std::string> files;
+ std::set<std::string> directories;
  bool mountOK=true,renameOK=true,writeOK=true,readOK=true,shortWrite=false;
  bool formatted=false;bool formatOK=true;int formats=0;
  std::string removeFailurePath;
  int removes=0;
  void end(){}
- bool format(){++formats;if(!formatOK)return false;files.clear();return true;}
- bool begin(bool format){formatted=format;if(format){files.clear();mountOK=true;}return mountOK;}
- bool exists(const String& path){return files.count(path)>0;}
- File open(const String& path,const char* mode){bool writable=*mode=='w';if(writable){if(!writeOK)return {};files[path].clear();}else if(!readOK||!exists(path))return {};return File(&files[path],writable,shortWrite);}
+ bool format(){++formats;if(!formatOK)return false;files.clear();directories.clear();return true;}
+ bool begin(bool format){formatted=format;if(format){files.clear();directories.clear();mountOK=true;}return mountOK;}
+ // LittleFS reports directories as existing paths.
+ bool exists(const String& path) { return files.count(path) || directories.count(path); }
+
+ // Record newly created upload directories.
+ bool mkdir(const String& path) { return !files.count(path) && directories.insert(path).second; }
+ File open(const String& path,const char* mode){bool writable=*mode=='w';if(writable){if(!writeOK)return {};files[path].clear();}else if(!readOK||!files.count(path))return {};return File(&files[path],writable,shortWrite);}
  bool remove(const String& path) {
   ++removes;
 
@@ -58,6 +68,6 @@ public:
 
   return files.erase(path) > 0;
  }
- bool rename(const String& from,const String& to){if(!renameOK||!exists(from))return false;files[to]=files[from];files.erase(from);return true;}
+ bool rename(const String& from,const String& to){if(!renameOK||!files.count(from))return false;files[to]=files[from];files.erase(from);return true;}
 };
 extern FakeFS LittleFS;

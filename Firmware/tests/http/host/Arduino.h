@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      tests/http/host/Arduino.h
- * Firmware:  0.6.0
- * Git base:  4967da86d1b1
+ * Firmware:  0.7.0
+ * Git base:  b4e2060f2874
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -19,16 +19,7 @@
 #include <cstddef>
 #include <string>
 #include <cstdio>
-class String : public std::string {
-public:
- using std::string::string;
- using std::string::operator=;
- String()=default;
- size_t write(uint8_t value){push_back(char(value));return 1;}
- size_t write(const uint8_t* values,size_t count){append(reinterpret_cast<const char*>(values),count);return count;}
- String(const std::string& text):std::string(text){}
- String& operator=(const char* text){if(text)assign(text);else std::string().swap(*this);return *this;}
-};
+#include "../../application/host/ArduinoString.h"
 class Stream {
 public:
  virtual ~Stream() = default;

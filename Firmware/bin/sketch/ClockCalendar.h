@@ -1,0 +1,71 @@
+#line 1 "/Volumes/Eight/Documents/Projects-Git/Time Machine/Firmware/TimeMachine/ClockCalendar.h"
+/*
+ * ===========================================================================
+ * File:      TimeMachine/ClockCalendar.h
+ * Firmware:  0.6.0
+ * Git base:  4967da86d1b1
+ *
+ * Copyright (c) 2026 Marc D. Spencer.
+ * All Rights Reserved under the applicable license.
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ * ===========================================================================
+ */
+
+#pragma once
+
+#include <stdint.h>
+
+namespace ClockCalendar {
+	struct DateTime {
+		uint16_t year = 2026;
+		uint8_t month = 10;
+		uint8_t day = 24;
+		uint8_t hour = 10;
+		uint8_t minute = 0;
+		uint8_t second = 0;
+	};
+
+	constexpr char Months[12][4] = {
+		"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+		"JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+	};
+
+	// Return the month length using Gregorian leap-year rules.
+	inline uint8_t daysInMonth(uint16_t year, uint8_t month) {
+		constexpr uint8_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+		const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+		return days[month - 1] + (month == 2 && leap ? 1 : 0);
+	}
+
+	// Advance calendar values across day, month, and year boundaries, including leap dates.
+	inline void advanceSeconds(DateTime& time, uint32_t seconds) {
+		const uint64_t total = uint64_t(time.hour) * 3600
+			+ uint32_t(time.minute) * 60 + time.second + uint64_t(seconds);
+		uint32_t days = total / 86400;
+		const uint32_t withinDay = total % 86400;
+		time.hour = withinDay / 3600;
+		time.minute = (withinDay / 60) % 60;
+		time.second = withinDay % 60;
+
+		while (days > 0) {
+			const uint8_t remaining = daysInMonth(time.year, time.month) - time.day;
+
+			if (days <= remaining) {
+				time.day += days;
+				break;
+			}
+
+			days -= remaining + 1;
+			time.day = 1;
+
+			if (++time.month > 12) {
+				time.month = 1;
+				++time.year;
+			}
+		}
+	}
+}

@@ -1,8 +1,8 @@
 #!/bin/sh
 # ===========================================================================
 # File:      tests/http/run.sh
-# Firmware:  0.6.0
-# Git base:  4967da86d1b1
+# Firmware:  0.7.0
+# Git base:  b4e2060f2874
 #
 # Copyright (c) 2026 Marc D. Spencer.
 # All Rights Reserved under the applicable license.
@@ -21,8 +21,16 @@ TIME_MACHINE_SKETCH=${TIME_MACHINE_SKETCH:-"$TEST_DIR/../../TimeMachine"}
 TEST_BUILD=$(mktemp -d)
 trap 'rm -rf "$TEST_BUILD"' EXIT HUP INT TERM
 for test in api fade offset routing; do
-c++ -std=c++17 -Wall -Wextra -I"$TEST_DIR/host" -I"$MDS_LIBRARIES/MDS_Config/src" -I"$MDS_LIBRARIES/MDS_HTTP/src" -I"$TIME_MACHINE_SKETCH" -I"$ARDUINOJSON_SRC" "$TEST_DIR/$test.cpp" "$TIME_MACHINE_SKETCH/ApplicationApi.cpp" "$TIME_MACHINE_SKETCH/MatrixDriver.cpp" "$TIME_MACHINE_SKETCH/Display.cpp" "$MDS_LIBRARIES/MDS_HTTP/src/MDS_HTTP.cpp" "$MDS_LIBRARIES/MDS_Config/src/MDS_Config.cpp" -o "$TEST_BUILD/$test"
-"$TEST_BUILD/$test"
+  c++ -std=c++17 -Wall -Wextra \
+    -I"$TEST_DIR/host" -I"$TEST_DIR/../application/host" \
+    -I"$MDS_LIBRARIES/MDS_Config/src" -I"$MDS_LIBRARIES/MDS_HTTP/src" \
+    -I"$MDS_LIBRARIES/MDS_HTTP_FS/src" -I"$TIME_MACHINE_SKETCH" -I"$ARDUINOJSON_SRC" \
+    "$TEST_DIR/$test.cpp" "$TIME_MACHINE_SKETCH/ApplicationApi.cpp" \
+    "$TIME_MACHINE_SKETCH/MatrixDriver.cpp" "$TIME_MACHINE_SKETCH/Display.cpp" \
+    "$MDS_LIBRARIES/MDS_HTTP/src/MDS_HTTP.cpp" "$MDS_LIBRARIES/MDS_HTTP/src/MDS_HTTPUpload.cpp" \
+    "$MDS_LIBRARIES/MDS_HTTP_FS/src/MDS_HTTP_FS.cpp" "$MDS_LIBRARIES/MDS_Config/src/MDS_Config.cpp" \
+    -o "$TEST_BUILD/$test"
+  "$TEST_BUILD/$test"
 done
 c++ -std=c++17 -Wall -Wextra -I"$TEST_DIR/host" -I"$TIME_MACHINE_SKETCH" "$TEST_DIR/driver.cpp" "$TIME_MACHINE_SKETCH/MatrixDriver.cpp" "$TIME_MACHINE_SKETCH/Display.cpp" -o "$TEST_BUILD/driver"
 "$TEST_BUILD/driver"

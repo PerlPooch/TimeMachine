@@ -1,6 +1,6 @@
 # Time Machine Firmware
 
-Current firmware: **0.6.0**. `/api/config` reports the running firmware through the read-only, nonpersistent `version` field. Configuration schema remains 1.
+Current firmware: **0.7.0**. `/api/config` reports the running firmware through the read-only, nonpersistent `version` field. Configuration schema remains 1.
 
 ## License and source banners
 
@@ -25,11 +25,11 @@ Refreshing banners does not change the running firmware version or API behavior.
 
 Open `TimeMachine/TimeMachine.ino`. Build settings, dependencies, OTA partitions, and upload instructions are in [BUILD.md](../BUILD.md).
 
-Shared-library versions: MDS_Config 0.7.0, MDS_Display 0.1.0, MDS_WiFi 0.2.0, MDS_HTTP 0.4.0, MDS_Time 0.2.0, and MDS_Weather 0.4.0. WiFiManager 2.0.17 or newer is also required. HTTP uses the state-change callback introduced in 0.4.0. Time and HTTP use readiness callbacks introduced in 0.2.0; Weather uses the accepted-sample update callback introduced in 0.4.0.
+Shared-library versions: MDS_Config 0.7.0, MDS_Display 0.1.0, MDS_WiFi 0.2.0, MDS_HTTP with `addUpload()`, MDS_HTTP_FS 0.1.0, MDS_Time 0.2.0, and MDS_Weather 0.4.0. WiFiManager 2.0.17 or newer is also required. HTTP uses the state-change callback introduced in 0.4.0. Time and HTTP use readiness callbacks introduced in 0.2.0; Weather uses the accepted-sample update callback introduced in 0.4.0.
 
 ## Browser firmware upload
 
-Open `http://BOARD_IP/upload` to upload the application firmware `.bin` file. Upload start displays a held `UPD` message through the same renderer as the display API's `message=` command (requires MDS_HTTP 0.4.0). A successful upload sends its HTTP response, then the application reboots into the new firmware. Failed or incomplete uploads do not request a reboot; the held message can be cleared with `message=`. Use the application binary, not the bootloader, partition table, or merged flash image. The running OTA partition layout must have room for the new application; this endpoint does not change the partition table or replace LittleFS files.
+Open `http://BOARD_IP/upload` to upload the application firmware `.bin` file. Upload start displays a held `UPLOAD` message through the same renderer as the display API's `message=` command (requires MDS_HTTP 0.4.0). A successful upload sends its HTTP response, then the application reboots into the new firmware. Failed or incomplete uploads do not request a reboot; the held message can be cleared with `message=`. Use the application binary, not the bootloader, partition table, or merged flash image. The running OTA partition layout must have room for the new application; this endpoint does not change the partition table or replace LittleFS files.
 
 ## Wi-Fi provisioning over A/B
 
@@ -65,14 +65,24 @@ dropped when the USB transmit buffer is full.
 
 ## LittleFS website
 
-Static requests map `/` to `/www/` and `/assets/` to `/www/assets/`.
-The ESP32 directory handler uses `index.htm`, so `/` serves `/www/index.htm`.
+Both `/` and `/index.html` serve `/www/index.html` directly. Other static requests
+map into `/www/`.
 For example, `/assets/logo.png` serves `/www/assets/logo.png`, with its content
 type selected from the file extension. Missing files return HTTP 404.
 
-API routes are registered first and remain under `/api/`; `/` no longer reads
-or updates configuration. Website files must be copied into LittleFS separately.
-The firmware does not create a page or provide a file-upload endpoint.
+Open `http://BOARD_IP/upload-file` to upload a website file. The destination path
+is relative to `/www`. Clients can also send a multipart `POST /upload-file` with
+one field named `file`.
+
+```sh
+curl --fail-with-body -F 'file=@index.html' http://BOARD_IP/upload-file
+curl --fail-with-body -F 'file=@style.css;filename=assets/style.css' http://BOARD_IP/upload-file
+```
+
+A successful upload publishes the file immediately. An interrupted upload keeps
+the previous file available. The board keeps running and preserves its saved
+configuration. Install `MDS_HTTP_FS` in the Arduino sketchbook alongside the
+other MDS libraries.
 
 Use the project-level `tools/lfs-download` and `tools/lfs-upload` for USB
 filesystem transfers. See [LittleFS transfer tools](../tools/README.md) for the
