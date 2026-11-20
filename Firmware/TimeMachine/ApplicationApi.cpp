@@ -53,8 +53,19 @@ void ApplicationApi::begin() {
 			on("/api/weather", HTTP_GET, [this]() { weatherRequest(); });
 		}
 
-		// Stream website uploads into the same directory used by the static routes.
-		http_.addUpload("/upload-file", std::unique_ptr<MDS_HTTPUpload>(new MDS_HTTP_FS(LittleFS, "/www")));
+		// Register the browser form and multipart handler for website files.
+		MDS_HTTP_FS::install(http_, "/upload-file", LittleFS, "/www", MDS_HTTP_FS::BrowserForm::Enabled);
+
+		// Open the index at request time so a new upload becomes visible immediately.
+		on("/", HTTP_GET, [this]() {
+			auto index = LittleFS.open("/www/index.html", "r");
+			if (!index || index.isDirectory()) {
+				server().send(404, "text/plain", "Website index not found");
+				return;
+			}
+
+			server().streamFile(index, "text/html");
+		});
 
 		// Register specific routes before the website's catch-all path.
 		server().serveStatic("/assets/", LittleFS, "/www/assets/");
