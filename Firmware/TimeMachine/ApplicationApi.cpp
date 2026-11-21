@@ -1,8 +1,8 @@
 /*
  * ===========================================================================
  * File:      TimeMachine/ApplicationApi.cpp
- * Firmware:  0.7.0
- * Git base:  b4e2060f2874
+ * Firmware:  0.8.0
+ * Git base:  e576c1146b7c
  *
  * Copyright (c) 2026 Marc D. Spencer.
  * All Rights Reserved under the applicable license.
@@ -257,7 +257,7 @@ void ApplicationApi::sendConfig() {
 
 	String body;
 	serializeJsonPretty(response, body);
-	server().send(200, "application/json", body);
+	server().send(200, "application/json", body + "\n");
 }
 
 // Combine repeated destination selections; an explicit selection replaces the local default.
