@@ -136,7 +136,7 @@ private:
 	static constexpr const char* ConfigPath = "/config.json";
 	MDS_Config config_{ConfigPath};
 	MDS_WiFi wifi_;
-	MDS_HTTP http_{MDS_HTTP::Options{MDS_HTTP::UploadMode::Enabled}};
+	MDS_HTTP http_;
 	MDS_Time time_;
 	MDS_Weather weather_;
 	ApplicationApi api_;

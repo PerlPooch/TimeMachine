@@ -54,7 +54,7 @@ void ApplicationApi::begin() {
 		}
 
 		// Register the browser form and multipart handler for website files.
-		MDS_HTTP_FS::install(http_, "/upload-file", LittleFS, "/www", MDS_HTTP_FS::BrowserForm::Enabled);
+		MDS_HTTP_FS::addUpload(http_, "/upload-file", LittleFS, "/www", MDS_HTTP::BrowserForm::Enabled);
 
 		// Open the index at request time so a new upload becomes visible immediately.
 		on("/", HTTP_GET, [this]() {

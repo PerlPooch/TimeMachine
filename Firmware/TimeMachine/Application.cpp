@@ -47,7 +47,10 @@ Application::Application(Mode mode, MatrixDriver& matrix, MDS_Display& oled, But
 	timeController_(time_, config_),
 	weatherController_(weather_, config_),
 	clock_(time_, config_, display_.commands(), oled_),
-	tests_(matrix_, display_, oled_) {}
+	tests_(matrix_, display_, oled_) {
+	// Register the application-owned firmware route before the listener starts.
+	http_.addFirmwareUpload("/upload", MDS_HTTP::BrowserForm::Enabled);
+}
 
 // Provide readable lifecycle names for transition reports.
 const char* Application::stateName(State state) {
