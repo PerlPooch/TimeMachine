@@ -20,6 +20,7 @@
 #include <LittleFS.h>
 #include <MDS_HTTP_FS.h>
 #include <string.h>
+#include <strings.h>
 #include <utility>
 
 // Borrow application services and the shared queue without starting the HTTP listener.
@@ -53,11 +54,13 @@ void ApplicationApi::begin() {
 			on("/api/weather", HTTP_GET, [this]() { weatherRequest(); });
 		}
 
-		// Register the browser form and multipart handler for website files.
-		MDS_HTTP_FS::addUpload(http_, "/upload-file", LittleFS, "/www", MDS_HTTP::BrowserForm::Enabled);
-
-		// Expose the website management API under the application namespace.
-		MDS_HTTP_FS::addCrud(http_, "/api/files", LittleFS, "/www");
+		const auto fileAccess = [this](const MDS_HTTPServer& request) {
+			// Read the current config at request time so edits and resets take effect immediately.
+			return httpAccessAllowed(request, "fileApiKey");
+		};
+		MDS_HTTP_FS::addUpload(http_, "/upload-file", LittleFS, "/www",
+			MDS_HTTP::BrowserForm::Enabled, fileAccess);
+		MDS_HTTP_FS::addCrud(http_, "/api/files", LittleFS, "/www", fileAccess);
 
 		// Open the index at request time so a new upload becomes visible immediately.
 		on("/", HTTP_GET, [this]() {
@@ -76,6 +79,29 @@ void ApplicationApi::begin() {
 
 		registered_ = true;
 	}
+}
+
+// Compare the supplied Bearer credential with the current HTTP access key.
+bool ApplicationApi::httpAccessAllowed(const MDS_HTTPServer& request, const char* keyField) const {
+	const JsonString key = config_.get(keyField).as<JsonString>();
+	if (key.size() == 0) {
+		return true;
+	}
+
+	constexpr char scheme[] = "Bearer ";
+	constexpr size_t schemeLength = sizeof(scheme) - 1;
+	const String authorization = request.header("Authorization");
+	if (authorization.length() != schemeLength + key.size()
+		|| strncasecmp(authorization.c_str(), scheme, schemeLength) != 0) {
+		return false;
+	}
+
+	unsigned int difference = 0;
+	for (size_t index = 0; index < key.size(); ++index) {
+		difference |= static_cast<unsigned char>(authorization[schemeLength + index])
+			^ static_cast<unsigned char>(key.c_str()[index]);
+	}
+	return difference == 0;
 }
 
 // Resolve request keys through the application setting definitions.
@@ -275,9 +301,14 @@ bool ApplicationApi::receiveConfigCommand(const uint8_t* payload, size_t length)
 	return !updates.overflowed() && applyConfig(updates);
 }
 
-// Validate grouped edits, apply display settings, and save only accepted changes.
+// Authorize HTTP config requests before reading, applying, or forwarding settings.
 void ApplicationApi::configRequest() {
 	server().sendHeader("Cache-Control", "no-store");
+
+	if (!httpAccessAllowed(server(), "configKey")) {
+		sendError(403, "Access denied");
+		return;
+	}
 
 	if (!server().args()) {
 		if (!syncDisplaySettings()) {

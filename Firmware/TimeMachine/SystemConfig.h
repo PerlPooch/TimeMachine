@@ -26,6 +26,20 @@ namespace SystemConfig {
 	using Type = MDS_ConfigType;
 	using Access = MDS_ConfigAccess;
 
+	// Accept an empty key or characters that can be sent unchanged in a Bearer header.
+	inline bool validHttpKey(JsonVariantConst value) {
+		const JsonString key = value.as<JsonString>();
+		for (size_t index = 0; index < key.size(); ++index) {
+			const char character = key.c_str()[index];
+			const bool alphaNumeric = (character >= 'a' && character <= 'z')
+				|| (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9');
+			if (!alphaNumeric && character != '-' && character != '_' && character != '.' && character != '~') {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	// Application definitions only; MDS_Config owns values, validation, and storage.
 	constexpr MDS_ConfigSetting Settings[] = {
 		{"schema", Type::Unsigned, Access::ReadOnly,  true, nullptr,        1, 1,  1, true},
@@ -41,6 +55,8 @@ namespace SystemConfig {
 		{"ntpServer1", Type::Text, Access::ReadWrite, true, MDS_Time::DefaultServer1,  0, 1,  64},
 		{"ntpServer2", Type::Text, Access::ReadWrite, true, MDS_Time::DefaultServer2,  0, 0,  64},
 		{"ntpInterval", Type::Unsigned, Access::ReadWrite, true, nullptr, MDS_Time::DefaultInterval, 60, 86400},
+		{"configKey", Type::Text, Access::ReadWrite, true, "", 0, 0, 64, false, true, validHttpKey},
+		{"fileApiKey", Type::Text, Access::ReadWrite, true, "", 0, 0, 64, false, true, validHttpKey},
 		{"owAppKey", Type::Text, Access::ReadWrite, true, "", 0, 0, 64, false, true, MDS_Weather::validApiKey},
 		{"latitude", Type::Text, Access::ReadWrite, true, "", 0, 0, 24, false, false, MDS_Weather::validLatitude},
 		{"longitude", Type::Text, Access::ReadWrite, true, "", 0, 0, 24, false, false, MDS_Weather::validLongitude},

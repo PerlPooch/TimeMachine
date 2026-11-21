@@ -58,6 +58,8 @@ private:
 	MDS_HTTPServer& server() { return http_.server(); }
 	void on(const char* path, HTTPMethod method, MDS_HTTPServer::THandlerFunction handler);
 	bool syncDisplaySettings(bool applyCurrent = false);
+	// Check the current HTTP access key against the incoming Bearer credential.
+	bool httpAccessAllowed(const MDS_HTTPServer& request, const char* keyField) const;
 	void configRequest();
 	bool applyConfig(const JsonDocument& updates);
 	static bool addDestination(const String& value, uint8_t& destinations, bool& selected);
