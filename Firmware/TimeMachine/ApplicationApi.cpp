@@ -56,6 +56,9 @@ void ApplicationApi::begin() {
 		// Register the browser form and multipart handler for website files.
 		MDS_HTTP_FS::addUpload(http_, "/upload-file", LittleFS, "/www", MDS_HTTP::BrowserForm::Enabled);
 
+		// Expose the website management API under the application namespace.
+		MDS_HTTP_FS::addCrud(http_, "/api/files", LittleFS, "/www");
+
 		// Open the index at request time so a new upload becomes visible immediately.
 		on("/", HTTP_GET, [this]() {
 			auto index = LittleFS.open("/www/index.html", "r");
